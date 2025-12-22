@@ -1,4 +1,4 @@
-   const defaultConfig = {
+  const defaultConfig = {
         background_color: "#faf9f7",
         surface_color: "#ffffff",
         text_color: "#2c2c2c",
@@ -8,9 +8,9 @@
         font_size: 16,
         brand_name: "LunaSol",
         tagline: "Handmade with Love",
-        hero_title: "Discover Unique Handmade Jewelry",
-        hero_subtitle: "Each piece tells a story",
-        cta_button: "Shop Collection",
+        hero_title: "NEW YEAR SALE",
+        hero_subtitle: "Up to 50% Off • Limited Time Only",
+        cta_button: "Shop Sale",
       };
 
       let config = { ...defaultConfig };
@@ -34,6 +34,8 @@
             category: "Keychains",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "A refreshing keychain inspired by ocean waves. Features blue and white beaded design with a starfish charm.",
@@ -46,6 +48,8 @@
             theme: "boho",
             sale: true,
             originalPrice: 20,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Bohemian-style keychain with feather details and earth-toned beads. Perfect for free spirits.",
@@ -57,6 +61,8 @@
             category: "Keychains",
             theme: "pop-culture",
             sale: false,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Show your pop culture love with this star-themed keychain. Metallic finish with glitter accents.",
@@ -68,6 +74,8 @@
             category: "Keychains",
             theme: "anime",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Anime-inspired charm keychain with kawaii elements. Colorful acrylic design.",
@@ -81,6 +89,8 @@
             category: "Necklaces",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Personalize your style with this elegant letter pendant necklace. Gold-plated charm on delicate chain. Perfect for gifting or treating yourself.",
@@ -123,6 +133,8 @@
             theme: "boho",
             sale: true,
             originalPrice: 55,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Celestial-inspired necklace featuring a crescent moon pendant with intricate detailing. Perfect for moon lovers and mystic souls.",
@@ -134,6 +146,8 @@
             category: "Necklaces",
             theme: "cartoon",
             sale: false,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Adorable heart-shaped pendant with cute cartoon styling. Pastel colors and glossy finish make it irresistibly sweet.",
@@ -145,6 +159,8 @@
             category: "Necklaces",
             theme: "anime",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Delicate cherry blossom design inspired by Japanese anime. Pink enamel petals with golden branches.",
@@ -158,6 +174,8 @@
             category: "Earrings",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Bring the beach wherever you go with these tropical earrings. Featuring palm leaf designs and turquoise accents.",
@@ -169,6 +187,8 @@
             category: "Earrings",
             theme: "boho",
             sale: false,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Long, flowing feather earrings with beaded details. Perfect for festival season and bohemian looks.",
@@ -181,6 +201,8 @@
             theme: "pop-culture",
             sale: true,
             originalPrice: 30,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "For music lovers! Dangling treble clef and music note charms. Show your passion for melodies.",
@@ -192,6 +214,8 @@
             category: "Earrings",
             theme: "cartoon",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Colorful rainbow stud earrings with glossy enamel finish. Spread joy and positivity with every wear.",
@@ -205,6 +229,8 @@
             category: "Rings",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Elegant freshwater pearl set on a gold band. Timeless design that complements any outfit.",
@@ -217,6 +243,8 @@
             theme: "boho",
             sale: true,
             originalPrice: 45,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Mystical moon phase ring with oxidized silver finish. Connect with lunar energy and celestial beauty.",
@@ -228,6 +256,8 @@
             category: "Rings",
             theme: "pop-culture",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Level up your style with this pixel heart ring. Perfect for gamers and retro enthusiasts.",
@@ -239,6 +269,8 @@
             category: "Rings",
             theme: "anime",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Delicate sakura blossom ring with pink stone center. Inspired by Japanese cherry blossom season.",
@@ -252,6 +284,8 @@
             category: "Bracelets",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Beautiful beaded bracelet featuring natural gemstones. Available in multiple colors to match your energy and style.",
@@ -276,6 +310,8 @@
             theme: "boho",
             sale: true,
             originalPrice: 32,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Layered chain bracelet with star charms and crystal accents. Captures the magic of the night sky.",
@@ -287,6 +323,8 @@
             category: "Bracelets",
             theme: "anime",
             sale: false,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Bold lightning bolt charm bracelet with metallic finish. Channel your inner power and strength.",
@@ -298,6 +336,8 @@
             category: "Bracelets",
             theme: "pop-culture",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Retro pixel art inspired bracelet with colorful beads. A nostalgic nod to 8-bit gaming era.",
@@ -311,6 +351,8 @@
             category: "Crochet",
             theme: "boho",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Handcrafted crochet plushie in soft pastel yarn. Perfect cuddle buddy for all ages.",
@@ -322,6 +364,8 @@
             category: "Crochet",
             theme: "cartoon",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Adorable crochet teddy bear with button eyes and bow tie. Made with love, one stitch at a time.",
@@ -334,6 +378,8 @@
             theme: "beachy",
             sale: true,
             originalPrice: 40,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Ocean-themed crochet turtle in blue and turquoise shades. Brings beachy vibes to your space.",
@@ -345,6 +391,8 @@
             category: "Crochet",
             theme: "anime",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Cosmic-inspired crochet character with sparkly details. Perfect for anime and space enthusiasts.",
@@ -358,6 +406,8 @@
             category: "Stickers",
             theme: "beachy",
             sale: false,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Waterproof vinyl stickers featuring surfboards, palm trees, and ocean waves. Set of 10 stickers.",
@@ -370,6 +420,8 @@
             theme: "boho",
             sale: true,
             originalPrice: 14,
+            inStock: true,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Mystical sticker set with moons, crystals, and mandala designs. Perfect for journals and laptops.",
@@ -381,6 +433,8 @@
             category: "Stickers",
             theme: "pop-culture",
             sale: false,
+            inStock: false,
+            isNew: false,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Trendy pop culture references and memes in sticker form. Express yourself with these fun designs.",
@@ -392,6 +446,8 @@
             category: "Stickers",
             theme: "anime",
             sale: false,
+            inStock: true,
+            isNew: true,
             images: ["Main View", "Detail Shot", "Lifestyle"],
             description:
               "Kawaii anime-style stickers with cute characters and expressions. Weather-resistant and glossy finish.",
@@ -546,6 +602,7 @@
           currentGalleryProduct = product;
           currentGalleryImage = 0;
           galleryOpen = true;
+          document.body.style.overflow = "hidden";
           updateUI();
         }
       }
@@ -554,6 +611,7 @@
         galleryOpen = false;
         currentGalleryProduct = null;
         currentGalleryImage = 0;
+        document.body.style.overflow = "";
         updateUI();
       }
 
@@ -685,6 +743,7 @@
               <div class="flex items-center justify-center gap-8">
                 ${[
                   "home",
+                  "sale",
                   "keychains",
                   "necklaces",
                   "earrings",
@@ -696,6 +755,7 @@
                   .map((view) => {
                     const labels = {
                       home: "All",
+                      sale: "🔥 Sale",
                       keychains: "Keychains",
                       necklaces: "Necklaces",
                       earrings: "Earrings",
@@ -735,17 +795,29 @@
         <div class="product-card" style="background: ${
           config.surface_color
         }; border: 1px solid rgba(212, 175, 55, 0.1);">
-          ${
-            product.sale
-              ? `<div class="absolute top-4 right-4 px-3 py-1 z-10" style="background: ${
-                  config.background_color
-                }; border: 1px solid ${config.primary_action_color}; color: ${
-                  config.primary_action_color
-                }; font-size: ${
-                  config.font_size * 0.75
-                }px; font-weight: 300; letter-spacing: 1px;">SALE</div>`
-              : ""
-          }
+          <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
+            ${
+              product.sale
+                ? `<div class="px-3 py-1" style="background: #dc2626; color: #ffffff; font-size: ${
+                    config.font_size * 0.75
+                  }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);">SALE</div>`
+                : ""
+            }
+            ${
+              product.isNew
+                ? `<div class="px-3 py-1" style="background: #16a34a; color: #ffffff; font-size: ${
+                    config.font_size * 0.75
+                  }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.4);">NEW</div>`
+                : ""
+            }
+            ${
+              !product.inStock
+                ? `<div class="px-3 py-1" style="background: #6b7280; color: #ffffff; font-size: ${
+                    config.font_size * 0.75
+                  }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(107, 114, 128, 0.4);">OUT OF STOCK</div>`
+                : ""
+            }
+          </div>
           
           <button onclick="openGallery('${
             product.id
@@ -755,6 +827,11 @@
             <img src="" alt="${
               product.name
             }" class="w-full h-full object-cover" onerror="this.style.display='none';">
+            ${
+              !product.inStock
+                ? `<div class="absolute inset-0" style="background: rgba(0,0,0,0.5);"></div>`
+                : ""
+            }
             <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style="background: rgba(0,0,0,0.4);">
               <span style="color: ${config.text_color}; font-size: ${
           config.font_size
@@ -769,7 +846,9 @@
                   config.font_size * 1.125
                 }px; color: ${
           config.text_color
-        }; font-weight: 400; line-height: 1.4;">
+        }; font-weight: 400; line-height: 1.4; ${
+          !product.inStock ? "opacity: 0.5;" : ""
+        }">
                   ${product.name}
                 </h3>
                 <span class="inline-block mt-2 capitalize" style="font-size: ${
@@ -798,7 +877,9 @@
               <div>
                 <span class="font-heading" style="font-size: ${
                   config.font_size * 1.25
-                }px; color: ${config.primary_action_color}; font-weight: 400;">
+                }px; color: ${config.primary_action_color}; font-weight: 400; ${
+          !product.inStock ? "opacity: 0.5;" : ""
+        }">
                   ₹${product.price}
                 </span>
                 ${
@@ -814,14 +895,18 @@
                 }
               </div>
               
-              <button onclick="addToCart('${
-                product.id
-              }')" class="btn-primary px-6 py-2 transition-opacity hover:opacity-80" style="background: ${
-          config.primary_action_color
+              <button onclick="addToCart('${product.id}')" ${
+          !product.inStock ? "disabled" : ""
+        } class="btn-primary px-6 py-2 transition-opacity ${
+          product.inStock ? "hover:opacity-80" : ""
+        }" style="background: ${
+          product.inStock ? config.primary_action_color : "#9ca3af"
         }; color: ${config.background_color}; font-size: ${
           config.font_size * 0.875
-        }px; font-weight: 400; letter-spacing: 1px;">
-                ADD
+        }px; font-weight: 400; letter-spacing: 1px; cursor: ${
+          product.inStock ? "pointer" : "not-allowed"
+        }; opacity: ${product.inStock ? "1" : "0.6"};">
+                ${product.inStock ? "ADD" : "OUT"}
               </button>
             </div>
           </div>
@@ -843,22 +928,22 @@
           config.primary_action_color
         }; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);">
             <div class="max-w-7xl mx-auto px-6 py-32 text-center">
-              <div class="fade-in">
-                <h2 class="font-heading mb-6" style="font-size: ${
-                  config.font_size * 3.5
+              <div class="fade-in pulse-sale">
+                <h2 class="font-heading mb-4" style="font-size: ${
+                  config.font_size * 5
                 }px; color: ${
           config.primary_action_color
-        }; font-weight: 600; letter-spacing: 4px; line-height: 1.2; text-shadow: 0 4px 20px rgba(212, 175, 55, 0.3); transform: scale(1.05);">
+        }; font-weight: 700; letter-spacing: 8px; line-height: 1.1; text-shadow: 0 8px 30px rgba(212, 175, 55, 0.5); text-transform: uppercase;">
                   ${config.hero_title}
                 </h2>
                 <p class="mb-12" style="font-size: ${
-                  config.font_size * 1.125
+                  config.font_size * 1.5
                 }px; color: ${
           config.text_color
-        }; opacity: 0.6; font-weight: 300; letter-spacing: 1px;">
+        }; opacity: 0.8; font-weight: 500; letter-spacing: 2px;">
                   ${config.hero_subtitle}
                 </p>
-                <button onclick="document.getElementById('collections').scrollIntoView({behavior: 'smooth'})" class="btn-primary px-10 py-4" style="background: ${
+                <button onclick="navigate('sale')" class="btn-primary px-10 py-4" style="background: ${
                   config.primary_action_color
                 }; color: ${config.background_color}; font-size: ${
           config.font_size
@@ -879,7 +964,7 @@
               }px; color: ${
                   config.text_color
                 }; font-weight: 300; letter-spacing: 3px;">
-                Sale
+                Sale Items
               </h2>
               <div class="carousel-container flex gap-6 overflow-x-auto pb-4">
                 ${saleProducts
@@ -975,7 +1060,7 @@
                     Quick Links
                   </h4>
                   <div class="space-y-2">
-                    ${["home", "keychains", "necklaces", "earrings"]
+                    ${["home", "sale", "keychains", "necklaces"]
                       .map(
                         (view) => `
                       <button onclick="navigate('${view}')" class="block transition-opacity hover:opacity-70" style="font-size: ${
@@ -1018,6 +1103,62 @@
               </div>
             </div>
           </footer>
+        </div>
+      `;
+      }
+
+      function renderSale() {
+        const saleProducts = allProducts.filter((p) => p.sale);
+
+        return `
+        <div class="py-20" style="background: ${
+          config.background_color
+        }; min-height: 100%;">
+          <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12 fade-in">
+              <h2 class="font-heading mb-4 pulse-sale" style="font-size: ${
+                config.font_size * 3
+              }px; color: ${
+          config.primary_action_color
+        }; font-weight: 600; letter-spacing: 4px; text-transform: uppercase;">
+                ${config.hero_title}
+              </h2>
+              <p class="mb-6" style="font-size: ${
+                config.font_size * 1.25
+              }px; color: ${
+          config.text_color
+        }; opacity: 0.7; font-weight: 400; letter-spacing: 1px;">
+                ${config.hero_subtitle}
+              </p>
+            </div>
+            
+            ${
+              saleProducts.length === 0
+                ? `
+              <div class="text-center py-20 fade-in">
+                <p style="font-size: ${config.font_size}px; color: ${
+                    config.text_color
+                  }; opacity: 0.5; margin-bottom: 24px; font-weight: 300;">
+                  No sale items available at the moment
+                </p>
+                <button onclick="navigate('home')" class="btn-primary px-8 py-3" style="background: ${
+                  config.primary_action_color
+                }; color: ${config.background_color}; font-size: ${
+                    config.font_size * 0.875
+                  }px; font-weight: 400; letter-spacing: 2px;">
+                  BROWSE ALL PRODUCTS
+                </button>
+              </div>
+            `
+                : `
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                ${saleProducts
+                  .map((product) => renderProductCard(product))
+                  .join("")}
+              </div>
+            `
+            }
+          </div>
         </div>
       `;
       }
@@ -1217,7 +1358,7 @@
                     config.primary_action_color
                   }; font-weight: 400;">
                         <span>Total</span>
-                        <span>���${subtotal.toFixed(2)}</span>
+                        <span>₹${subtotal.toFixed(2)}</span>
                       </div>
                     </div>
                     
@@ -1416,7 +1557,7 @@
 
         return `
         <div class="modal-overlay" onclick="if(event.target === this) closeGallery()">
-          <div class="modal-content relative" style="max-width: 1000px; width: 90%;">
+          <div class="modal-content relative" style="max-width: 1000px; width: 90%; margin: auto;">
             <button onclick="closeGallery()" class="absolute top-4 right-4 w-10 h-10 flex items-center justify-center z-10 transition-opacity hover:opacity-70" style="background: ${
               config.surface_color
             }; border: 1px solid rgba(212, 175, 55, 0.3);">
@@ -1438,6 +1579,11 @@
                     <img id="gallery-image" src="" alt="${
                       currentGalleryProduct.name
                     }" class="w-full h-full object-cover" onerror="this.style.display='none';">
+                    ${
+                      !currentGalleryProduct.inStock
+                        ? `<div class="absolute inset-0" style="background: rgba(0,0,0,0.5);"></div>`
+                        : ""
+                    }
                     <div class="absolute bottom-0 left-0 right-0 p-3" style="background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);">
                       <p id="gallery-label" class="font-heading" style="font-size: ${
                         config.font_size * 0.875
@@ -1472,11 +1618,37 @@
                 
                 <div class="flex flex-col">
                   <div class="flex-grow">
+                    <div class="flex gap-2 mb-4">
+                      ${
+                        currentGalleryProduct.sale
+                          ? `<div class="px-3 py-1" style="background: #dc2626; color: #ffffff; font-size: ${
+                              config.font_size * 0.75
+                            }px; font-weight: 600; letter-spacing: 1px;">SALE</div>`
+                          : ""
+                      }
+                      ${
+                        currentGalleryProduct.isNew
+                          ? `<div class="px-3 py-1" style="background: #16a34a; color: #ffffff; font-size: ${
+                              config.font_size * 0.75
+                            }px; font-weight: 600; letter-spacing: 1px;">NEW</div>`
+                          : ""
+                      }
+                      ${
+                        !currentGalleryProduct.inStock
+                          ? `<div class="px-3 py-1" style="background: #6b7280; color: #ffffff; font-size: ${
+                              config.font_size * 0.75
+                            }px; font-weight: 600; letter-spacing: 1px;">OUT OF STOCK</div>`
+                          : ""
+                      }
+                    </div>
+                    
                     <h3 class="font-heading mb-3" style="font-size: ${
                       config.font_size * 1.75
                     }px; color: ${
           config.text_color
-        }; font-weight: 400; line-height: 1.3;">
+        }; font-weight: 400; line-height: 1.3; ${
+          !currentGalleryProduct.inStock ? "opacity: 0.6;" : ""
+        }">
                       ${currentGalleryProduct.name}
                     </h3>
                     
@@ -1503,7 +1675,9 @@
                           config.font_size * 2
                         }px; color: ${
           config.primary_action_color
-        }; font-weight: 400;">
+        }; font-weight: 400; ${
+          !currentGalleryProduct.inStock ? "opacity: 0.6;" : ""
+        }">
                           ₹${currentGalleryProduct.price}
                         </span>
                         ${
@@ -1532,7 +1706,8 @@
                     </div>
                     
                     ${
-                      currentGalleryProduct.hasVariants
+                      currentGalleryProduct.hasVariants &&
+                      currentGalleryProduct.inStock
                         ? `
                       <div class="mb-8 p-4" style="border: 1px solid rgba(212, 175, 55, 0.1); background: ${
                         config.background_color
@@ -1657,12 +1832,24 @@
                   <div class="flex gap-4 mt-8">
                     <button onclick="addToCart('${
                       currentGalleryProduct.id
-                    }')" class="btn-primary flex-1 py-4" style="background: ${
-          config.primary_action_color
+                    }')" ${
+          !currentGalleryProduct.inStock ? "disabled" : ""
+        } class="btn-primary flex-1 py-4 ${
+          currentGalleryProduct.inStock ? "" : "opacity-50"
+        }" style="background: ${
+          currentGalleryProduct.inStock
+            ? config.primary_action_color
+            : "#9ca3af"
         }; color: ${config.background_color}; font-size: ${
           config.font_size
-        }px; font-weight: 400; letter-spacing: 2px;">
-                      ADD TO CART
+        }px; font-weight: 400; letter-spacing: 2px; cursor: ${
+          currentGalleryProduct.inStock ? "pointer" : "not-allowed"
+        };">
+                      ${
+                        currentGalleryProduct.inStock
+                          ? "ADD TO CART"
+                          : "OUT OF STOCK"
+                      }
                     </button>
                     
                     <button onclick="toggleWishlist('${
@@ -1702,6 +1889,8 @@
 
         if (currentView === "home") {
           content += renderHome();
+        } else if (currentView === "sale") {
+          content += renderSale();
         } else if (currentView === "wishlist") {
           content += renderWishlist();
         } else if (currentView === "cart") {
@@ -1722,27 +1911,20 @@
         updateUI();
       }
 
-async function init() {
-  // Check if SDK exists, if not, just render the UI
-  if (window.dataSdk && window.dataSdk.init) {
-    const initResult = await window.dataSdk.init(dataHandler);
-    if (!initResult.isOk) {
-      console.error("Failed to initialize data SDK");
-    }
-  } else {
-    console.warn("Data SDK not found. Running in preview mode.");
+      async function init() {
+  if (!window.dataSdk) {
+    console.warn("dataSdk not found — running in local mode");
+    updateUI();
+    return;
   }
 
-  // Same check for elementSdk
-  if (window.elementSdk && window.elementSdk.init) {
-    window.elementSdk.init({
-      // ... your existing config mapping ...
-    });
+  const initResult = await window.dataSdk.init(dataHandler);
+  if (!initResult.isOk) {
+    console.error("Failed to initialize data SDK");
+    return;
   }
 
-  // This ensures the UI renders even if the SDKs are missing
   updateUI();
 }
-      
 
       init();
