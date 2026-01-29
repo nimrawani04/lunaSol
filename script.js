@@ -142,7 +142,7 @@ const products = {
     },
     {
       id: "keychain5",
-      name: "Cute Teddy Bear Keychain",
+      name: "Adorable Teddy Bear Keychain",
       price: 100,
       category: "Keychains",
       theme: "Cute",
@@ -156,7 +156,7 @@ const products = {
 
     {
       id: "keychain6",
-      name: "Cute Watermelon themed Keychain",
+      name: "Watermelon themed Keychain with Letter Variants",
       price: 100,
       category: "Keychains",
       theme: "Cute",
@@ -200,7 +200,7 @@ const products = {
 
     {
       id: "keychain7",
-      name: "Cute Rapunzel Keychain",
+      name: "Rapunzel Keychain",
       price: 250,
       category: "Keychains",
       theme: "Cute",
@@ -213,7 +213,7 @@ const products = {
 
     {
       id: "keychain8",
-      name: "Cute Jasmine Keychain",
+      name: "Jasmine Keychain",
       price: 230,
       category: "Keychains",
       theme: "Cute",
@@ -306,7 +306,7 @@ const products = {
       name: "Beachy shell Vibes",
       price: 50,
       category: "Earrings",
-      theme: "beachy",
+      theme: "Beachy",
       sale: false,
       inStock: true,
       isNew: false,
@@ -369,7 +369,7 @@ const products = {
       name: "Cute Minimalist Ring",
       price: 30,
       category: "Rings",
-      theme: "minimalist",
+      theme: "Minimalist",
       sale: false,
       inStock: true,
       isNew: false,
@@ -388,7 +388,7 @@ const products = {
       name: "Monochromatic minimalist rings",
       price: 30,
       category: "Rings",
-      theme: "minimalist",
+      theme: "Minimalist",
       sale: false,
       inStock: true,
       isNew: false,
@@ -413,7 +413,7 @@ const products = {
       name: "Set of three minimalist rings",
       price: 80,
       category: "Rings",
-      theme: "minimalist",
+      theme: "Minimalist",
       sale: false,
       inStock: true,
       isNew: false,
@@ -937,6 +937,117 @@ const products = {
     },
 
   ],
+  knitting_and_crochet: [
+    {
+      id: "knitting1",
+      name: "Cute potli with flower design",
+      price: 750,
+      category: "Knitting and Crochet",
+      theme: "Cute",
+      sale: false,
+      inStock: true,
+      isNew: true,
+      images: ["images/kc6.png"],
+      description:
+        "Adorable handcrafted potli bag with beautiful flower design. Perfect for carrying small essentials in style.",
+    },
+    {
+      id: "knitting2",
+      name: "Cherry Keychains",
+      price: 230,
+      category: "Knitting and Crochet",
+      theme: "Trendy",
+      sale: true,
+      originalPrice: 250,
+      inStock: true,
+      isNew: false,
+      images: ["images/kc3.png"],
+      description:
+        "Vibrant cherry-themed keychain with detailed crochet work. A perfect accessory for fruit lovers.",
+      hasVariants: true,
+      variantType: "color",
+      variants: [
+        { value: "Light Pink", inStock: true },
+        { value: "Dark Pink", inStock: false },
+        { value: "Red", inStock: true },
+        { value: "Blue", inStock: false },
+        { value: "Black", inStock: true },
+      ]
+    },
+    {
+      id: "crochet1",
+      name: "Bow keychain",
+      price: 200,
+      category: "Knitting and Crochet",
+      theme: "Trendy",
+      sale: false,
+      inStock: true,
+      isNew: true,
+      images: ["images/kc4.png"],
+      description:
+        "Charming bow-shaped keychain with intricate crochet details. A stylish accessory for your keys or bags.",
+    },
+      {
+      id: "crochet3",
+      name: "Flower Bookmark",
+      price: 250,
+      category: "Knitting and Crochet",
+      theme: "Cute",
+      sale: false,
+      inStock: false,
+      isNew: true,
+      images: ["images/kc5.png"],
+      description:
+        "Beautiful handcrafted flower bookmark. Perfect for adding a touch of charm to your reading experience.",
+    },
+      {
+      id: "crochet4",
+      name: "Tulip Bookmarks",
+      price: 180,
+      category: "Knitting and Crochet",
+      theme: "Cute",
+      sale: false,
+      inStock: true,
+      isNew: true,
+      images: ["images/kc1.png"],
+      description:
+        "Adorable handcrafted amigurumi toy. Perfect as a cute gift or collectable for amigurumi lovers.",
+        hasVariants: true,
+      variantType: "color",
+      variants: [
+        { value: "lavender", inStock: false },
+        { value: "pink", inStock: true },
+        { value: "red", inStock: true },
+        { value: "blue", inStock: false },
+        { value: "yellow", inStock: false },
+        { value: "orange", inStock: true },
+        { value: "white", inStock: false },
+      ]
+    },
+    {
+      id: "crochet2",
+      name: "Flower with leaf Bookmark",
+      price: 180,
+      category: "Knitting and Crochet",
+      theme: "Cute",
+      sale: false,
+      inStock: true,
+      isNew: false,
+      images: ["images/kc2.png"],
+      description:
+        "Delightful handcrafted flower bookmark with leaf detail. A charming accessory for book lovers.",
+      hasVariants: true,
+      variantType: "color",
+      variants: [
+        { value: "lavender", inStock: false },
+        { value: "pink", inStock: true },
+        { value: "red", inStock: true },
+        { value: "blue", inStock: true },
+        { value: "yellow", inStock: true },
+      ]
+    },
+    
+  ],
 };
 
 const allProducts = Object.values(products).flat();
@@ -1238,6 +1349,7 @@ function renderHeader() {
       "bracelets",
       "combo_sets",
       "anklets",
+      "knitting_and_crochet",
     ]
       .map((view) => {
         const labels = {
@@ -1250,6 +1362,7 @@ function renderHeader() {
           bracelets: "Bracelets",
           combo_sets: "Combo sets",
           anklets: "Anklets",
+          knitting_and_crochet: "Knitting & Crochet",
         };
         const isActive = currentView === view;
         return `
@@ -1593,7 +1706,7 @@ function renderHome() {
               <div class="text-center">
                 <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
     }; opacity: 0.4; font-weight: 300; letter-spacing: 1px;">
-                  © 2024 ${config.brand_name}. All rights reserved.
+                  © 2026 ${config.brand_name}. All rights reserved.
                 </p>
               </div>
             </div>
@@ -1840,7 +1953,7 @@ function renderCategoryPage(category) {
     categoryProducts,
     category
   );
-  const themes = ["beachy", "boho", "pop-culture", "anime", "cartoon"];
+  const themes = ["Cute", "Trendy", "Beachy", "Minimalist", "Fandom", "Combo"];
 
   const currentSort = sortByPerCategory[category] || "default";
   const currentFilter = filterThemePerCategory[category] || "all";
