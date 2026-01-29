@@ -2630,4 +2630,138 @@ async function init() {
   updateUI();
 }
 
+/* ==================== RESPONSIVE FUNCTIONALITY ==================== */
+
+// Handle window resize for responsive behavior
+let resizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    updateUI();
+  }, 250); // Debounce resize events
+});
+
+// Handle orientation change
+window.addEventListener('orientationchange', function() {
+  setTimeout(function() {
+    updateUI();
+  }, 100);
+});
+
+// Handle touch events for better mobile experience
+let touchStartX = 0;
+let touchEndX = 0;
+
+document.addEventListener('touchstart', function(e) {
+  touchStartX = e.changedTouches[0].screenX;
+}, false);
+
+document.addEventListener('touchend', function(e) {
+  touchEndX = e.changedTouches[0].screenX;
+  handleSwipe();
+}, false);
+
+function handleSwipe() {
+  const swipeThreshold = 50;
+  const diff = touchStartX - touchEndX;
+  
+  // Swipe left - next page/section
+  if (diff > swipeThreshold) {
+    // Can be used for pagination if needed
+  }
+  // Swipe right - previous page/section
+  else if (diff < -swipeThreshold) {
+    // Can be used for pagination if needed
+  }
+}
+
+// Add media query listener for viewport changes
+if (window.matchMedia) {
+  // Mobile (max-width: 640px)
+  const mobileQuery = window.matchMedia('(max-width: 640px)');
+  mobileQuery.addListener(function(e) {
+    if (e.matches) {
+      console.log('Mobile viewport activated');
+    }
+  });
+
+  // Tablet (641px to 1024px)
+  const tabletQuery = window.matchMedia('(min-width: 641px) and (max-width: 1024px)');
+  tabletQuery.addListener(function(e) {
+    if (e.matches) {
+      console.log('Tablet viewport activated');
+    }
+  });
+
+  // Desktop (1025px and above)
+  const desktopQuery = window.matchMedia('(min-width: 1025px)');
+  desktopQuery.addListener(function(e) {
+    if (e.matches) {
+      console.log('Desktop viewport activated');
+    }
+  });
+}
+
+// Improve touch scrolling performance
+const scrollableElements = document.querySelectorAll('.overflow-x-auto, .carousel-container');
+scrollableElements.forEach(element => {
+  element.style.webkitOverflowScrolling = 'touch';
+});
+
+// Handle viewport meta tag for proper scaling
+function setupViewport() {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) {
+    // Already set in HTML meta tag
+  }
+}
+
+// Prevent zoom on double-tap for input fields
+document.addEventListener('touchstart', function(event) {
+  if (event.target.tagName.toLowerCase() === 'input') {
+    event.target.addEventListener('touchend', function(e) {
+      e.preventDefault();
+    }, { passive: false });
+  }
+});
+
+// Add support for responsive font sizes
+function adjustFontSizes() {
+  const width = window.innerWidth;
+  const root = document.documentElement;
+  
+  if (width <= 480) {
+    root.style.fontSize = '12px';
+  } else if (width <= 640) {
+    root.style.fontSize = '14px';
+  } else if (width <= 1024) {
+    root.style.fontSize = '15px';
+  } else {
+    root.style.fontSize = '16px';
+  }
+}
+
+adjustFontSizes();
+window.addEventListener('resize', adjustFontSizes);
+
+// Optimize images for different screen sizes
+function optimizeImages() {
+  const images = document.querySelectorAll('img');
+  images.forEach(img => {
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+  });
+}
+
+// Call after each update
+const originalUpdateUI = updateUI;
+window.updateUI = function() {
+  originalUpdateUI.call(this);
+  optimizeImages();
+};
+
+// Initialize viewport setup
+setupViewport();
+
 init();

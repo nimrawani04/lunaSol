@@ -140,4 +140,380 @@
       @view-transition {
         navigation: auto;
       }
+
+      /* ==================== RESPONSIVE DESIGN ==================== */
+
+      /* Mobile First Approach - Base styles for mobile */
+      @media (max-width: 640px) {
+        body {
+          font-size: 14px;
+        }
+
+        .modal-overlay {
+          padding: 10px;
+        }
+
+        .modal-content {
+          max-width: 95%;
+          max-height: 95%;
+        }
+
+        header .max-w-7xl {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        header nav {
+          margin-top: 12px;
+          gap: 4px;
+        }
+
+        header nav .flex {
+          flex-wrap: wrap;
+          gap: 4px;
+          justify-content: center;
+        }
+
+        header nav button {
+          font-size: 11px !important;
+          padding: 6px 8px;
+          letter-spacing: 0.5px !important;
+        }
+
+        .carousel-container {
+          gap: 12px;
+          padding: 8px;
+        }
+
+        .carousel-slide {
+          width: 100% !important;
+          min-width: 100% !important;
+          flex-shrink: 0;
+        }
+
+        .product-card {
+          width: 100%;
+        }
+
+        .max-w-7xl {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        section {
+          padding-top: 12px !important;
+          padding-bottom: 12px !important;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+        }
+
+        section[style*="min-height: 60%"] {
+          min-height: 40vh !important;
+          padding: 20px 0 !important;
+        }
+
+        section[style*="min-height: 60%"] h2 {
+          font-size: 24px !important;
+          line-height: 1.2 !important;
+          letter-spacing: 2px !important;
+        }
+
+        section[style*="min-height: 60%"] p {
+          font-size: 13px !important;
+          margin-bottom: 8px !important;
+        }
+
+        section[style*="min-height: 60%"] button {
+          padding: 10px 16px !important;
+          font-size: 11px !important;
+        }
+
+        .flex {
+          flex-wrap: wrap;
+        }
+
+        .gap-6 {
+          gap: 10px !important;
+        }
+
+        .gap-8 {
+          gap: 12px !important;
+        }
+
+        .px-6 {
+          padding-left: 12px !important;
+          padding-right: 12px !important;
+        }
+
+        .py-6 {
+          padding-top: 12px !important;
+          padding-bottom: 12px !important;
+        }
+
+        .py-20 {
+          padding-top: 12px !important;
+          padding-bottom: 12px !important;
+        }
+
+        .py-24 {
+          padding-top: 16px !important;
+          padding-bottom: 16px !important;
+        }
+
+        .py-32 {
+          padding-top: 16px !important;
+          padding-bottom: 16px !important;
+        }
+
+        .mb-4 {
+          margin-bottom: 8px !important;
+        }
+
+        .mb-8 {
+          margin-bottom: 12px !important;
+        }
+
+        .mb-12 {
+          margin-bottom: 16px !important;
+        }
+
+        .mb-24 {
+          margin-bottom: 16px !important;
+        }
+
+        .mt-4 {
+          margin-top: 8px !important;
+        }
+
+        .mt-8 {
+          margin-top: 12px !important;
+        }
+
+        button, a {
+          padding: 10px !important;
+          min-height: 44px;
+          min-width: 44px;
+        }
+
+        .carousel-container img {
+          width: 100%;
+          height: auto;
+        }
+
+        .product-card:hover {
+          transform: translateY(-4px);
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-1px);
+        }
+      }
+
+      /* Tablets (641px to 1024px) */
+      @media (min-width: 641px) and (max-width: 1024px) {
+        body {
+          font-size: 15px;
+        }
+
+        .modal-overlay {
+          padding: 15px;
+        }
+
+        .modal-content {
+          max-width: 90%;
+          max-height: 90%;
+        }
+
+        header nav button {
+          font-size: 13px !important;
+          padding: 8px 12px;
+        }
+
+        .carousel-container {
+          gap: 16px;
+        }
+
+        .carousel-slide {
+          width: calc(50% - 8px) !important;
+          min-width: calc(50% - 8px) !important;
+        }
+
+        .max-w-7xl {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        section {
+          padding-top: 16px !important;
+          padding-bottom: 16px !important;
+        }
+
+        section[style*="min-height: 60%"] {
+          min-height: 50vh !important;
+          padding: 24px 0 !important;
+        }
+
+        section[style*="min-height: 60%"] h2 {
+          font-size: 36px !important;
+        }
+
+        section[style*="min-height: 60%"] p {
+          font-size: 16px !important;
+        }
+
+        .px-6 {
+          padding-left: 16px !important;
+          padding-right: 16px !important;
+        }
+
+        .py-20 {
+          padding-top: 16px !important;
+          padding-bottom: 16px !important;
+        }
+
+        .py-24 {
+          padding-top: 20px !important;
+          padding-bottom: 20px !important;
+        }
+
+        .mb-12 {
+          margin-bottom: 12px !important;
+        }
+
+        .mb-24 {
+          margin-bottom: 16px !important;
+        }
+      }
+
+      /* Desktop (1025px and above) */
+      @media (min-width: 1025px) {
+        .modal-overlay {
+          padding: 20px;
+        }
+
+        .carousel-slide {
+          width: 320px !important;
+          min-width: 320px !important;
+        }
+
+        .max-w-7xl {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+      }
+
+      /* Large Desktop (1440px and above) */
+      @media (min-width: 1440px) {
+        .max-w-7xl {
+          max-width: 1344px;
+        }
+      }
+
+      /* General Responsive Utilities */
+      * {
+        box-sizing: border-box;
+      }
+
+      body, html {
+        overflow-x: hidden;
+      }
+
+      img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }
+
+      .overflow-x-auto {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .carousel-container {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+      }
+
+      /* Touch-friendly elements on mobile */
+      @media (max-width: 768px) {
+        button, a {
+          min-height: 44px;
+          min-width: 44px;
+        }
+
+        .relative button {
+          min-width: 40px;
+          min-height: 40px;
+        }
+      }
+
+      /* Landscape orientation adjustments */
+      @media (max-width: 900px) and (orientation: landscape) {
+        section[style*="min-height"] {
+          min-height: auto !important;
+          padding: 12px 0 !important;
+        }
+
+        header nav {
+          margin-top: 4px !important;
+        }
+
+        section[style*="min-height: 60%"] h2 {
+          font-size: 20px !important;
+        }
+
+        section[style*="min-height: 60%"] p {
+          font-size: 12px !important;
+        }
+
+        section[style*="min-height: 60%"] button {
+          padding: 8px 12px !important;
+          font-size: 10px !important;
+        }
+      }
+
+      /* Utility classes for responsive behavior */
+      .hidden-mobile {
+        display: none;
+      }
+
+      @media (min-width: 641px) {
+        .hidden-mobile {
+          display: block;
+        }
+
+        .hidden-desktop {
+          display: none !important;
+        }
+      }
+
+      /* High DPI devices (retina) */
+      @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        .carousel-container::-webkit-scrollbar-thumb {
+          background: rgba(212, 175, 55, 0.5);
+        }
+      }
+
+      /* Accessibility - Focus states */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      /* Ensure proper text sizing on smaller devices */
+      @media (max-width: 480px) {
+        .font-heading {
+          letter-spacing: 1px;
+        }
+
+        button {
+          font-size: 12px !important;
+        }
+      }
     
