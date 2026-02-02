@@ -1215,6 +1215,11 @@ function removeCartItem(productId) {
   updateUI();
 }
 
+function removeFromWishlist(productId) {
+  wishlistItems.delete(productId);
+  updateUI();
+}
+
 function moveToWishlist(productId) {
   if (cartItems.has(productId)) {
     cartItems.delete(productId);
@@ -1863,7 +1868,100 @@ function renderWishlist() {
       : `
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 ${wishlistProducts
-        .map((product) => renderProductCard(product))
+        .map((product) => `
+        <div class="product-card" style="background: ${config.surface_color
+    }; border: 1px solid rgba(212, 175, 55, 0.1);">
+          <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
+            ${product.sale
+      ? `<div class="px-3 py-1" style="background: #dc2626; color: #ffffff; font-size: ${config.font_size * 0.75
+      }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);">SALE</div>`
+      : ""
+    }
+            ${product.isNew
+      ? `<div class="px-3 py-1" style="background: #16a34a; color: #ffffff; font-size: ${config.font_size * 0.75
+      }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.4);">NEW</div>`
+      : ""
+    }
+            ${!product.inStock
+      ? `<div class="px-3 py-1" style="background: #6b7280; color: #ffffff; font-size: ${config.font_size * 0.75
+      }px; font-weight: 600; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(107, 114, 128, 0.4);">OUT OF STOCK</div>`
+      : ""
+    }
+          </div>
+          
+          <button onclick="openGallery('${product.id
+    }')" class="aspect-square relative w-full cursor-pointer group overflow-hidden" style="background: ${config.background_color
+    };">
+            <img src="${product.images[0]}" alt="${product.name
+    }" class="w-full h-full object-cover" onerror="this.style.display='none';">
+            ${!product.inStock
+      ? `<div class="absolute inset-0" style="background: rgba(0,0,0,0.5);"></div>`
+      : ""
+    }
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style="background: rgba(0,0,0,0.4);">
+              <span style="color: ${config.text_color}; font-size: ${config.font_size
+    }px; font-weight: 300; letter-spacing: 2px;">VIEW</span>
+            </div>
+          </button>
+          
+          <div class="p-5">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex-grow">
+                <h3 class="font-heading" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; line-height: 1.4; ${!product.inStock ? "opacity: 0.5;" : ""
+    }">
+                  ${product.name}
+                </h3>
+                <span class="inline-block mt-2 capitalize" style="font-size: ${config.font_size * 0.75
+    }px; color: ${config.text_color
+    }; opacity: 0.5; font-weight: 300; letter-spacing: 1px;">
+                  ${product.theme.replace("-", " ")}
+                </span>
+              </div>
+              
+              <button onclick="toggleWishlist('${product.id
+    }')" class="transition-opacity hover:opacity-70">
+                <svg class="w-5 h-5" fill="${config.primary_action_color}" stroke="${config.primary_action_color}" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                </svg>
+              </button>
+            </div>
+            
+            <div class="flex items-center justify-between mt-4 pt-4" style="border-top: 1px solid rgba(212, 175, 55, 0.1);">
+              <div>
+                <span class="font-heading" style="font-size: ${config.font_size * 1.25
+    }px; color: ${config.primary_action_color}; font-weight: 400; ${!product.inStock ? "opacity: 0.5;" : ""
+    }">
+                  ₹${product.price}
+                </span>
+                ${product.sale
+      ? `<span style="font-size: ${config.font_size * 0.875
+      }px; color: ${config.text_color
+      }; opacity: 0.4; text-decoration: line-through; margin-left: 8px;">₹${product.originalPrice
+      }</span>`
+      : ""
+    }
+              </div>
+              
+              <div class="flex flex-col gap-2">
+                <button onclick="addToCart('${product.id}')" ${!product.inStock ? "disabled" : ""
+    } class="btn-primary px-6 py-2 transition-opacity ${product.inStock ? "hover:opacity-80" : ""
+    }" style="background: ${product.inStock ? config.primary_action_color : "#9ca3af"
+    }; color: ${config.background_color}; font-size: ${config.font_size * 0.875
+    }px; font-weight: 400; letter-spacing: 1px; cursor: ${product.inStock ? "pointer" : "not-allowed"
+    }; opacity: ${product.inStock ? "1" : "0.6"};">
+                  ${product.inStock ? "ADD" : "OUT"}
+                </button>
+                
+                <button onclick="removeFromWishlist('${product.id}')" class="px-4 py-1 transition-opacity hover:opacity-80" style="border: 1px solid #ff0000; color: #ff0000; font-size: ${config.font_size * 0.75}px; font-weight: 400; letter-spacing: 1px; background: transparent;">
+                  REMOVE
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        `)
         .join("")}
               </div>
             `
