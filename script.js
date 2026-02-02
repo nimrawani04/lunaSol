@@ -981,7 +981,7 @@ const products = {
       category: "Knitting and Crochet",
       theme: "Trendy",
       sale: false,
-      inStock: true,
+      inStock: false,
       isNew: true,
       images: ["images/kc4.png"],
       description:
@@ -1192,6 +1192,75 @@ function showNotification(message, type = "success") {
     notification.style.transform = "translateX(100px)";
     setTimeout(() => notification.remove(), 300);
   }, 2500);
+}
+
+function incrementCartItem(productId) {
+  const currentCount = cartItems.get(productId) || 0;
+  cartItems.set(productId, currentCount + 1);
+  updateUI();
+}
+
+function decrementCartItem(productId) {
+  const currentCount = cartItems.get(productId) || 0;
+  if (currentCount > 1) {
+    cartItems.set(productId, currentCount - 1);
+  } else {
+    cartItems.delete(productId);
+  }
+  updateUI();
+}
+
+function removeCartItem(productId) {
+  cartItems.delete(productId);
+  updateUI();
+}
+
+function moveToWishlist(productId) {
+  if (cartItems.has(productId)) {
+    cartItems.delete(productId);
+    wishlistItems.add(productId);
+    updateUI();
+  }
+}
+
+function handleCheckoutSubmit(event) {
+  event.preventDefault();
+  
+  const form = event.target;
+  const formData = new FormData(form);
+  
+  // Basic validation
+  const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'address1', 'city', 'state', 'pincode'];
+  let isValid = true;
+  
+  requiredFields.forEach(field => {
+    if (!formData.get(field)) {
+      isValid = false;
+    }
+  });
+  
+  const paymentMethod = formData.get('paymentMethod');
+  if (paymentMethod === 'card') {
+    if (!formData.get('cardNumber') || !formData.get('expiry') || !formData.get('cvv')) {
+      isValid = false;
+    }
+  }
+  
+  if (!isValid) {
+    showNotification("Please fill in all required fields", "error");
+    return;
+  }
+  
+  // Simulate order placement
+  showNotification("Order placed successfully!", "success");
+  
+  // Clear cart
+  cartItems.clear();
+  
+  // Navigate to home
+  setTimeout(() => {
+    navigate('home');
+  }, 2000);
 }
 
 function navigate(view) {
@@ -1863,7 +1932,7 @@ function renderCart() {
                           
                           <div class="flex items-center gap-6 mt-4">
                             <div class="flex items-center gap-3">
-                              <button onclick="removeFromCart('${product.id
+                              <button onclick="decrementCartItem('${product.id
             }')" class="w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
             }; font-weight: 300;">
                                 −
@@ -1873,10 +1942,22 @@ function renderCart() {
             }; font-weight: 400; width: 2rem; text-align: center;">
                                 ${quantity}
                               </span>
-                              <button onclick="addToCart('${product.id
+                              <button onclick="incrementCartItem('${product.id
             }')" class="w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
             }; font-weight: 300;">
                                 +
+                              </button>
+                            </div>
+                            
+                            <div class="flex items-center gap-2 ml-4">
+                              <button onclick="moveToWishlist('${product.id
+            }')" class="px-3 py-1 text-xs transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
+            }; font-weight: 300; border-radius: 4px;">
+                                ♡ Wishlist
+                              </button>
+                              <button onclick="removeCartItem('${product.id
+            }')" class="px-3 py-1 text-xs transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: #ff0000; font-weight: 300; border-radius: 4px;">
+                                ✕ Remove
                               </button>
                             </div>
                             
@@ -1924,7 +2005,7 @@ function renderCart() {
                       </div>
                     </div>
                     
-                    <button class="btn-primary w-full py-4 mb-4" style="background: ${config.primary_action_color
+                    <button onclick="navigate('checkout')" class="btn-primary w-full py-4 mb-4" style="background: ${config.primary_action_color
       }; color: ${config.background_color}; font-size: ${config.font_size
       }px; font-weight: 400; letter-spacing: 2px;">
                       CHECKOUT
@@ -1940,6 +2021,192 @@ function renderCart() {
               </div>
             `
     }
+          </div>
+        </div>
+      `;
+}
+
+function renderCheckout() {
+  const cartProducts = allProducts.filter((p) => cartItems.has(p.id));
+  
+  if (cartProducts.length === 0) {
+    navigate('cart');
+    return '';
+  }
+  
+  const subtotal = cartProducts.reduce(
+    (sum, p) => sum + p.price * (cartItems.get(p.id) || 0),
+    0
+  );
+  const shipping = 50; // Fixed shipping for demo
+  const total = subtotal + shipping;
+
+  return `
+        <div class="py-20" style="background: ${config.background_color}; min-height: 100%;">
+          <div class="max-w-6xl mx-auto px-6">
+            <h2 class="font-heading mb-12" style="font-size: ${config.font_size * 2}px; color: ${config.text_color}; font-weight: 300; letter-spacing: 3px;">
+              Checkout
+            </h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              <!-- Order Summary -->
+              <div class="order-2 lg:order-1">
+                <div class="p-8 fade-in" style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.1);">
+                  <h3 class="font-heading mb-6" style="font-size: ${config.font_size * 1.25}px; color: ${config.text_color}; font-weight: 400;">
+                    Order Summary
+                  </h3>
+                  
+                  <div class="space-y-4 mb-6">
+                    ${cartProducts.map((product) => {
+                      const quantity = cartItems.get(product.id) || 0;
+                      return `
+                        <div class="flex items-center gap-4">
+                          <div class="w-16 h-16 flex-shrink-0 overflow-hidden" style="background: ${config.background_color};">
+                            <img src="${product.images[0]}" alt="${product.name}" class="w-full h-full object-cover" onerror="this.style.display='none';">
+                          </div>
+                          <div class="flex-grow">
+                            <h4 style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 400;">${product.name}</h4>
+                            <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.5;">Qty: ${quantity}</p>
+                          </div>
+                          <span style="font-size: ${config.font_size * 0.875}px; color: ${config.primary_action_color}; font-weight: 400;">₹${(product.price * quantity).toFixed(2)}</span>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                  
+                  <div class="divider my-4"></div>
+                  
+                  <div class="space-y-2">
+                    <div class="flex justify-between" style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; opacity: 0.7;">
+                      <span>Subtotal</span>
+                      <span>₹${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between" style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; opacity: 0.7;">
+                      <span>Shipping</span>
+                      <span>₹${shipping.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between font-heading" style="font-size: ${config.font_size * 1.125}px; color: ${config.primary_action_color}; font-weight: 400;">
+                      <span>Total</span>
+                      <span>₹${total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Checkout Form -->
+              <div class="order-1 lg:order-2">
+                <form id="checkoutForm" class="space-y-8">
+                  <!-- Customer Details -->
+                  <div class="p-8 fade-in" style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.1);">
+                    <h3 class="font-heading mb-6" style="font-size: ${config.font_size * 1.25}px; color: ${config.text_color}; font-weight: 400;">
+                      Customer Details
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">First Name</label>
+                        <input type="text" name="firstName" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                      </div>
+                      <div>
+                        <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Last Name</label>
+                        <input type="text" name="lastName" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                      </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                      <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Email</label>
+                      <input type="email" name="email" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                    </div>
+                    
+                    <div class="mt-4">
+                      <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Phone</label>
+                      <input type="tel" name="phone" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                    </div>
+                  </div>
+                  
+                  <!-- Shipping Address -->
+                  <div class="p-8 fade-in" style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.1);">
+                    <h3 class="font-heading mb-6" style="font-size: ${config.font_size * 1.25}px; color: ${config.text_color}; font-weight: 400;">
+                      Shipping Address
+                    </h3>
+                    
+                    <div class="space-y-4">
+                      <div>
+                        <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Address Line 1</label>
+                        <input type="text" name="address1" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                      </div>
+                      
+                      <div>
+                        <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Address Line 2 (Optional)</label>
+                        <input type="text" name="address2" class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                      </div>
+                      
+                      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">City</label>
+                          <input type="text" name="city" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                        </div>
+                        <div>
+                          <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">State</label>
+                          <input type="text" name="state" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                        </div>
+                        <div>
+                          <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">PIN Code</label>
+                          <input type="text" name="pincode" required class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Payment Method -->
+                  <div class="p-8 fade-in" style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.1);">
+                    <h3 class="font-heading mb-6" style="font-size: ${config.font_size * 1.25}px; color: ${config.text_color}; font-weight: 400;">
+                      Payment Method
+                    </h3>
+                    
+                    <div class="space-y-4">
+                      <div class="flex items-center">
+                        <input type="radio" id="card" name="paymentMethod" value="card" checked class="mr-3">
+                        <label for="card" style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; cursor: pointer;">Credit/Debit Card</label>
+                      </div>
+                      
+                      <div id="cardDetails" class="ml-6 space-y-4">
+                        <div>
+                          <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Card Number</label>
+                          <input type="text" name="cardNumber" placeholder="1234 5678 9012 3456" class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                          <div>
+                            <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">Expiry Date</label>
+                            <input type="text" name="expiry" placeholder="MM/YY" class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                          </div>
+                          <div>
+                            <label style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; display: block; margin-bottom: 4px;">CVV</label>
+                            <input type="text" name="cvv" placeholder="123" class="w-full px-4 py-3" style="background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.875}px; border-radius: 4px;">
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="flex items-center">
+                        <input type="radio" id="paypal" name="paymentMethod" value="paypal" class="mr-3">
+                        <label for="paypal" style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; cursor: pointer;">PayPal</label>
+                      </div>
+                      
+                      <div class="flex items-center">
+                        <input type="radio" id="cod" name="paymentMethod" value="cod" class="mr-3">
+                        <label for="cod" style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 300; cursor: pointer;">Cash on Delivery</label>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Place Order Button -->
+                  <button type="submit" class="btn-primary w-full py-4" style="background: ${config.primary_action_color}; color: ${config.background_color}; font-size: ${config.font_size}px; font-weight: 400; letter-spacing: 2px;">
+                    PLACE ORDER
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       `;
@@ -2598,6 +2865,8 @@ function updateUI() {
     content += renderWishlist();
   } else if (currentView === "cart") {
     content += renderCart();
+  } else if (currentView === "checkout") {
+    content += renderCheckout();
   } else if (products[currentView]) {
     content += renderCategoryPage(currentView);
   }
@@ -2607,6 +2876,27 @@ function updateUI() {
   }
 
   app.innerHTML = content;
+  
+  // Attach event listeners for dynamic content
+  if (currentView === 'checkout') {
+    const checkoutForm = document.getElementById('checkoutForm');
+    if (checkoutForm) {
+      checkoutForm.addEventListener('submit', handleCheckoutSubmit);
+    }
+    
+    // Handle payment method changes
+    const paymentMethods = document.querySelectorAll('input[name="paymentMethod"]');
+    paymentMethods.forEach(radio => {
+      radio.addEventListener('change', function() {
+        const cardDetails = document.getElementById('cardDetails');
+        if (this.value === 'card') {
+          cardDetails.style.display = 'block';
+        } else {
+          cardDetails.style.display = 'none';
+        }
+      });
+    });
+  }
 }
 
 async function onConfigChange(newConfig) {
