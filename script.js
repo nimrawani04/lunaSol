@@ -8,7 +8,7 @@ const defaultConfig = {
   font_size: 16,
   brand_name: "LunaSol",
   tagline: "Handmade with Love",
-  hero_title: "REPUBLIC DAY SALE",
+  hero_title: "VALENTINE'S DAY SALE",
   hero_subtitle: "Up to 50% Off • Limited Time Only",
   cta_button: "Shop Sale",
 };
@@ -31,6 +31,8 @@ const themePalettes = {
 };
 
 const THEME_STORAGE_KEY = "lunasol-theme";
+const valentineHeroColor = "#e11d48";
+const valentineGlowColor = "rgba(225, 29, 72, 0.45)";
 
 let config = { ...defaultConfig };
 let wishlistItems = new Map();
@@ -1046,7 +1048,7 @@ const products = {
       category: "Knitting and Crochet",
       theme: "Cute",
       sale: false,
-      inStock: true,
+      inStock: false,
       isNew: true,
       images: ["images/kc6.png"],
       description:
@@ -1555,6 +1557,24 @@ function selectVariantMulti(productId, variantType, variantValue) {
   updateUI();
 }
 
+function renderValentineEffects() {
+  return `
+    <div class="valentine-float" aria-hidden="true">
+      <span class="valentine-heart" style="left: 6%; --scale: 0.8; animation-delay: 0s; animation-duration: 12s;"></span>
+      <span class="valentine-heart" style="left: 18%; --scale: 1; animation-delay: 2s; animation-duration: 14s;"></span>
+      <span class="valentine-heart" style="left: 30%; --scale: 0.7; animation-delay: 1s; animation-duration: 11s;"></span>
+      <span class="valentine-heart" style="left: 42%; --scale: 1.1; animation-delay: 3s; animation-duration: 15s;"></span>
+      <span class="valentine-heart" style="left: 58%; --scale: 0.9; animation-delay: 0.5s; animation-duration: 13s;"></span>
+      <span class="valentine-heart" style="left: 72%; --scale: 1.05; animation-delay: 2.5s; animation-duration: 16s;"></span>
+      <span class="valentine-heart" style="left: 86%; --scale: 0.8; animation-delay: 1.5s; animation-duration: 12s;"></span>
+      <span class="valentine-bloom" style="left: 12%; --scale: 0.8; animation-delay: 0.8s; animation-duration: 10s;"></span>
+      <span class="valentine-bloom" style="left: 36%; --scale: 1; animation-delay: 2.2s; animation-duration: 12s;"></span>
+      <span class="valentine-bloom" style="left: 64%; --scale: 0.9; animation-delay: 1.2s; animation-duration: 11s;"></span>
+      <span class="valentine-bloom" style="left: 90%; --scale: 1.1; animation-delay: 2.8s; animation-duration: 13s;"></span>
+    </div>
+  `;
+}
+
 function cloneVariant(variant) {
   if (!variant || typeof variant !== "object") {
     return variant;
@@ -1960,15 +1980,16 @@ function renderHome() {
 
   return `
         <div>
-          <section class="relative" style="background: linear-gradient(135deg, ${config.surface_color
+          <section class="relative valentine-hero" style="background: linear-gradient(135deg, ${config.surface_color
     } 0%, ${config.background_color
     } 100%); min-height: 60%; display: flex; align-items: center; border-bottom: 2px solid ${config.primary_action_color
     }; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);">
-            <div class="max-w-7xl mx-auto px-6 py-32 text-center">
+            ${renderValentineEffects()}
+            <div class="max-w-7xl mx-auto px-6 py-32 text-center valentine-content">
               <div class="fade-in pulse-sale">
                 <h2 class="font-heading mb-4" style="font-size: ${config.font_size * 5
-    }px; color: ${config.primary_action_color
-    }; font-weight: 700; letter-spacing: 8px; line-height: 1.1; text-shadow: 0 8px 30px rgba(212, 175, 55, 0.5); text-transform: uppercase;">
+    }px; color: ${valentineHeroColor
+    }; font-weight: 700; letter-spacing: 8px; line-height: 1.1; text-shadow: 0 8px 30px ${valentineGlowColor}; text-transform: uppercase;">
                   ${config.hero_title}
                 </h2>
                 <p class="mb-12" style="font-size: ${config.font_size * 1.5
@@ -2154,10 +2175,12 @@ function renderSale() {
         <div class="py-20" style="background: ${config.background_color
     }; min-height: 100%;">
           <div class="max-w-7xl mx-auto px-6">
-            <div class="text-center mb-12 fade-in">
+            <div class="text-center mb-12 fade-in valentine-hero">
+              ${renderValentineEffects()}
+              <div class="valentine-content">
               <h2 class="font-heading mb-4 pulse-sale" style="font-size: ${config.font_size * 3
-    }px; color: ${config.primary_action_color
-    }; font-weight: 600; letter-spacing: 4px; text-transform: uppercase;">
+    }px; color: ${valentineHeroColor
+    }; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 6px 22px ${valentineGlowColor};">
                 ${config.hero_title}
               </h2>
               <p class="mb-6" style="font-size: ${config.font_size * 1.25
@@ -2165,6 +2188,7 @@ function renderSale() {
     }; opacity: 0.7; font-weight: 400; letter-spacing: 1px;">
                 ${config.hero_subtitle}
               </p>
+              </div>
             </div>
             
             ${saleProducts.length === 0
