@@ -13,6 +13,25 @@ const defaultConfig = {
   cta_button: "Shop Sale",
 };
 
+const themePalettes = {
+  light: {
+    background_color: "#faf9f7",
+    surface_color: "#ffffff",
+    text_color: "#2c2c2c",
+    primary_action_color: "#d4af37",
+    secondary_action_color: "#8b7355",
+  },
+  dark: {
+    background_color: "#14120f",
+    surface_color: "#1d1a15",
+    text_color: "#f3efe6",
+    primary_action_color: "#d4af37",
+    secondary_action_color: "#b9985a",
+  },
+};
+
+const THEME_STORAGE_KEY = "lunasol-theme";
+
 let config = { ...defaultConfig };
 let wishlistItems = new Set();
 let cartItems = new Map();
@@ -24,6 +43,88 @@ let sortByPerCategory = {};
 let filterThemePerCategory = {};
 let filtersVisiblePerCategory = {};
 let selectedVariants = {}; // Tracks selected variant for each product
+let themeMode = "light";
+let hasStoredTheme = false;
+
+function getStoredTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") {
+      hasStoredTheme = true;
+      return saved;
+    }
+  } catch (error) {
+    // Ignore storage errors (privacy mode, blocked storage, etc.)
+  }
+  return null;
+}
+
+function applyThemeToConfig() {
+  const palette = themePalettes[themeMode] || themePalettes.light;
+  config = { ...config, ...palette };
+}
+
+function setTheme(mode, options = {}) {
+  const { persist = true, render = true } = options;
+  themeMode = mode === "dark" ? "dark" : "light";
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+      hasStoredTheme = true;
+    } catch (error) {
+      // Ignore storage errors
+    }
+  }
+
+  applyThemeToConfig();
+  if (render) {
+    updateUI();
+  }
+}
+
+function toggleTheme() {
+  setTheme(themeMode === "dark" ? "light" : "dark");
+}
+
+function syncThemeUI() {
+  document.documentElement.dataset.theme = themeMode;
+  document.documentElement.style.colorScheme = themeMode;
+  document.body.style.background = config.background_color;
+  document.body.style.color = config.text_color;
+
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute("content", config.background_color);
+  }
+}
+
+function initTheme() {
+  const stored = getStoredTheme();
+  if (stored) {
+    themeMode = stored;
+  } else if (window.matchMedia) {
+    themeMode = window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  applyThemeToConfig();
+
+  if (window.matchMedia) {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (event) => {
+      if (!hasStoredTheme) {
+        setTheme(event.matches ? "dark" : "light", { persist: false });
+      }
+    };
+
+    if (media.addEventListener) {
+      media.addEventListener("change", handler);
+    } else if (media.addListener) {
+      media.addListener(handler);
+    }
+  }
+}
 
 const products = {
   keychains: [
@@ -1075,29 +1176,53 @@ async function toggleWishlist(productId) {
     document.querySelectorAll(`[data-wishlist-record="${productId}"]`)
   );
 
-  if (wishlistItems.has(productId)) {
+  const wasInWishlist = wishlistItems.has(productId);
+
+  if (wasInWishlist) {
     wishlistItems.delete(productId);
-    const recordsToDelete = existingRecords.map((el) =>
-      JSON.parse(el.dataset.record)
-    );
-    for (const record of recordsToDelete) {
-      await window.dataSdk.delete(record);
+    
+    // Try to delete records if dataSdk is available
+    if (window.dataSdk) {
+      try {
+        const recordsToDelete = existingRecords.map((el) =>
+          JSON.parse(el.dataset.record)
+        );
+        for (const record of recordsToDelete) {
+          await window.dataSdk.delete(record);
+        }
+      } catch (error) {
+        // In local mode, just proceed
+      }
     }
+    
+    showNotification("Removed from wishlist", "success");
   } else {
     wishlistItems.add(productId);
-    const result = await window.dataSdk.create({
-      item_id: productId,
-      item_type:
-        allProducts.find((p) => p.id === productId)?.category ||
-        "Unknown",
-      action_type: "wishlist",
-      timestamp: Date.now(),
-    });
+    
+    // Try to create record if dataSdk is available
+    if (window.dataSdk) {
+      try {
+        const result = await window.dataSdk.create({
+          item_id: productId,
+          item_type:
+            allProducts.find((p) => p.id === productId)?.category ||
+            "Unknown",
+          action_type: "wishlist",
+          timestamp: Date.now(),
+        });
 
-    if (!result.isOk) {
-      wishlistItems.delete(productId);
-      showNotification("Failed to add to wishlist", "error");
+        if (!result.isOk) {
+          wishlistItems.delete(productId);
+          showNotification("Failed to add to wishlist", "error");
+          updateUI();
+          return;
+        }
+      } catch (error) {
+        // In local mode, keep the change
+      }
     }
+    
+    showNotification("Added to wishlist", "success");
   }
 
   updateUI();
@@ -1139,16 +1264,26 @@ async function addToCart(productId) {
     itemData.variant = selectedVariants[productId];
   }
 
-  const result = await window.dataSdk.create(itemData);
-
-  if (result.isOk) {
-    showNotification("Added to cart", "success");
-    updateUI();
+  // Try to persist if dataSdk is available
+  if (window.dataSdk) {
+    try {
+      const result = await window.dataSdk.create(itemData);
+      if (result.isOk) {
+        showNotification("Added to cart", "success");
+      } else {
+        cartItems.set(productId, currentCount);
+        showNotification("Failed to add to cart", "error");
+      }
+    } catch (error) {
+      // In local mode, keep the change
+      showNotification("Added to cart", "success");
+    }
   } else {
-    cartItems.set(productId, currentCount);
-    showNotification("Failed to add to cart", "error");
-    updateUI();
+    // Local mode - just show success
+    showNotification("Added to cart", "success");
   }
+
+  updateUI();
 }
 
 async function removeFromCart(productId) {
@@ -1362,6 +1497,16 @@ function renderHeader() {
     (a, b) => a + b,
     0
   );
+  const isDarkMode = themeMode === "dark";
+  const themeLabel = isDarkMode ? "Switch to light mode" : "Switch to dark mode";
+  const themeIcon = isDarkMode
+    ? `<svg class="w-6 h-6" fill="none" stroke="${config.text_color}" stroke-width="1.5" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2M12 19v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M3 12h2M19 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+        </svg>`
+    : `<svg class="w-6 h-6" fill="none" stroke="${config.text_color}" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"></path>
+        </svg>`;
 
   return `
         <header class="sticky top-0 z-40" style="background: ${config.background_color
@@ -1382,6 +1527,9 @@ function renderHeader() {
               </button>
               
               <div class="flex items-center gap-6">
+                <button onclick="toggleTheme()" class="transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); padding: 6px; border-radius: 9999px;" aria-label="${themeLabel}" title="${themeLabel}">
+                  ${themeIcon}
+                </button>
                 <button onclick="navigate('wishlist')" class="relative transition-opacity hover:opacity-70">
                   <svg class="w-6 h-6" fill="${wishlistCount > 0 ? config.primary_action_color : "none"
     }" stroke="${config.text_color
@@ -1464,7 +1612,7 @@ function renderProductCard(product) {
 
   return `
         <div class="product-card" style="background: ${config.surface_color
-    }; border: 1px solid rgba(212, 175, 55, 0.1);">
+    }; border: 1px solid rgba(212, 175, 55, 0.1); position: relative;">
           <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
             ${product.sale
       ? `<div class="px-3 py-1" style="background: #dc2626; color: #ffffff; font-size: ${config.font_size * 0.75
@@ -1870,7 +2018,7 @@ function renderWishlist() {
                 ${wishlistProducts
         .map((product) => `
         <div class="product-card" style="background: ${config.surface_color
-    }; border: 1px solid rgba(212, 175, 55, 0.1);">
+    }; border: 1px solid rgba(212, 175, 55, 0.1); position: relative;">
           <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
             ${product.sale
       ? `<div class="px-3 py-1" style="background: #dc2626; color: #ffffff; font-size: ${config.font_size * 0.75
@@ -2950,8 +3098,10 @@ function renderGalleryModal() {
 
 function updateUI() {
   const app = document.getElementById("app");
+  syncThemeUI();
   app.style.background = config.background_color;
   app.style.fontFamily = `${config.font_family}, sans-serif`;
+  app.style.color = config.text_color;
 
   let content = renderHeader();
 
@@ -2999,6 +3149,7 @@ function updateUI() {
 
 async function onConfigChange(newConfig) {
   config = { ...config, ...newConfig };
+  applyThemeToConfig();
   updateUI();
 }
 
@@ -3152,4 +3303,5 @@ window.updateUI = function() {
 // Initialize viewport setup
 setupViewport();
 
+initTheme();
 init();
