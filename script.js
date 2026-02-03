@@ -1719,8 +1719,7 @@ function updateGalleryImage() {
   const galleryLabel = document.getElementById("gallery-label");
   if (galleryImg && galleryLabel && currentGalleryProduct) {
     galleryImg.src = currentGalleryProduct.images[currentGalleryImage];
-    galleryLabel.textContent =
-      currentGalleryProduct.images[currentGalleryImage];
+    galleryLabel.textContent = "";
   }
 }
 
@@ -2891,9 +2890,7 @@ function renderGalleryModal() {
     }
                     <div class="absolute bottom-0 left-0 right-0 p-3" style="background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);">
                       <p id="gallery-label" class="font-heading" style="font-size: ${config.font_size * 0.875
-    }px; color: #ffffff; font-weight: 300;">
-                        ${currentGalleryProduct.images[currentGalleryImage]}
-                      </p>
+    }px; color: #ffffff; font-weight: 300;"></p>
                     </div>
                   </div>
                   
