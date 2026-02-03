@@ -33,7 +33,7 @@ const themePalettes = {
 const THEME_STORAGE_KEY = "lunasol-theme";
 
 let config = { ...defaultConfig };
-let wishlistItems = new Set();
+let wishlistItems = new Map();
 let cartItems = new Map();
 let currentView = "home";
 let galleryOpen = false;
@@ -1160,10 +1160,25 @@ const dataHandler = {
 
     data.forEach((record) => {
       if (record.action_type === "wishlist") {
-        wishlistItems.add(record.item_id);
+        const key = buildItemKey(record.item_id, record.variant);
+        wishlistItems.set(key, {
+          key,
+          productId: record.item_id,
+          variant: cloneVariant(record.variant),
+        });
       } else if (record.action_type === "cart") {
-        const count = cartItems.get(record.item_id) || 0;
-        cartItems.set(record.item_id, count + 1);
+        const key = buildItemKey(record.item_id, record.variant);
+        const existing = cartItems.get(key);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          cartItems.set(key, {
+            key,
+            productId: record.item_id,
+            variant: cloneVariant(record.variant),
+            quantity: 1,
+          });
+        }
       }
     });
 
@@ -1171,15 +1186,36 @@ const dataHandler = {
   },
 };
 
-async function toggleWishlist(productId) {
+async function toggleWishlist(productId, variantOverride) {
   const existingRecords = Array.from(
     document.querySelectorAll(`[data-wishlist-record="${productId}"]`)
   );
+  const product = allProducts.find((p) => p.id === productId);
+  const variantSelection =
+    variantOverride !== undefined ? variantOverride : selectedVariants[productId];
 
-  const wasInWishlist = wishlistItems.has(productId);
+  if (product && product.hasVariants) {
+    if (product.multiVariantTypes) {
+      if (
+        !variantSelection ||
+        !product.variantGroups.every(
+          (group) => variantSelection[group.variantType]
+        )
+      ) {
+        showNotification("Please select all variant options", "error");
+        return;
+      }
+    } else if (!variantSelection) {
+      showNotification("Please select a " + product.variantType, "error");
+      return;
+    }
+  }
+
+  const itemKey = buildItemKey(productId, variantSelection);
+  const wasInWishlist = wishlistItems.has(itemKey);
 
   if (wasInWishlist) {
-    wishlistItems.delete(productId);
+    wishlistItems.delete(itemKey);
     
     // Try to delete records if dataSdk is available
     if (window.dataSdk) {
@@ -1197,7 +1233,11 @@ async function toggleWishlist(productId) {
     
     showNotification("Removed from wishlist", "success");
   } else {
-    wishlistItems.add(productId);
+    wishlistItems.set(itemKey, {
+      key: itemKey,
+      productId,
+      variant: cloneVariant(variantSelection),
+    });
     
     // Try to create record if dataSdk is available
     if (window.dataSdk) {
@@ -1205,14 +1245,14 @@ async function toggleWishlist(productId) {
         const result = await window.dataSdk.create({
           item_id: productId,
           item_type:
-            allProducts.find((p) => p.id === productId)?.category ||
-            "Unknown",
+            product?.category || "Unknown",
           action_type: "wishlist",
+          variant: cloneVariant(variantSelection),
           timestamp: Date.now(),
         });
 
         if (!result.isOk) {
-          wishlistItems.delete(productId);
+          wishlistItems.delete(itemKey);
           showNotification("Failed to add to wishlist", "error");
           updateUI();
           return;
@@ -1228,29 +1268,45 @@ async function toggleWishlist(productId) {
   updateUI();
 }
 
-async function addToCart(productId) {
+async function addToCart(productId, variantOverride) {
   const product = allProducts.find((p) => p.id === productId);
+  const variantSelection =
+    variantOverride !== undefined ? variantOverride : selectedVariants[productId];
 
   // Check if product has variants and one is selected
   if (product && product.hasVariants) {
     if (product.multiVariantTypes) {
       // Check if all variant types are selected
-      const selectedVariant = selectedVariants[productId];
-      if (!selectedVariant || !product.variantGroups.every(group => selectedVariant[group.variantType])) {
+      if (
+        !variantSelection ||
+        !product.variantGroups.every(
+          (group) => variantSelection[group.variantType]
+        )
+      ) {
         showNotification("Please select all variant options", "error");
         return;
       }
     } else {
-      const selectedVariant = selectedVariants[productId];
-      if (!selectedVariant) {
+      if (!variantSelection) {
         showNotification("Please select a " + product.variantType, "error");
         return;
       }
     }
   }
 
-  const currentCount = cartItems.get(productId) || 0;
-  cartItems.set(productId, currentCount + 1);
+  const itemKey = buildItemKey(productId, variantSelection);
+  const existing = cartItems.get(itemKey);
+  const currentCount = existing ? existing.quantity : 0;
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cartItems.set(itemKey, {
+      key: itemKey,
+      productId,
+      variant: cloneVariant(variantSelection),
+      quantity: 1,
+    });
+  }
 
   const itemData = {
     item_id: productId,
@@ -1260,8 +1316,8 @@ async function addToCart(productId) {
   };
 
   // Add variant info if product has variants
-  if (product && product.hasVariants && selectedVariants[productId]) {
-    itemData.variant = selectedVariants[productId];
+  if (product && product.hasVariants && variantSelection) {
+    itemData.variant = cloneVariant(variantSelection);
   }
 
   // Try to persist if dataSdk is available
@@ -1271,7 +1327,14 @@ async function addToCart(productId) {
       if (result.isOk) {
         showNotification("Added to cart", "success");
       } else {
-        cartItems.set(productId, currentCount);
+        if (currentCount > 0) {
+          const rollback = cartItems.get(itemKey);
+          if (rollback) {
+            rollback.quantity = currentCount;
+          }
+        } else {
+          cartItems.delete(itemKey);
+        }
         showNotification("Failed to add to cart", "error");
       }
     } catch (error) {
@@ -1286,22 +1349,31 @@ async function addToCart(productId) {
   updateUI();
 }
 
-async function removeFromCart(productId) {
+async function removeFromCart(itemKey) {
   const existingRecords = Array.from(
-    document.querySelectorAll(`[data-cart-record="${productId}"]`)
+    document.querySelectorAll(`[data-cart-record="${itemKey}"]`)
   );
 
   if (existingRecords.length > 0) {
     const recordToDelete = JSON.parse(existingRecords[0].dataset.record);
     await window.dataSdk.delete(recordToDelete);
+  }
 
-    const currentCount = cartItems.get(productId) || 0;
-    if (currentCount > 1) {
-      cartItems.set(productId, currentCount - 1);
+  let keyToUpdate = itemKey;
+  if (!cartItems.has(keyToUpdate)) {
+    const fallback = Array.from(cartItems.values()).find(
+      (item) => item.productId === itemKey
+    );
+    keyToUpdate = fallback ? fallback.key : null;
+  }
+
+  if (keyToUpdate && cartItems.has(keyToUpdate)) {
+    const item = cartItems.get(keyToUpdate);
+    if (item.quantity > 1) {
+      item.quantity -= 1;
     } else {
-      cartItems.delete(productId);
+      cartItems.delete(keyToUpdate);
     }
-
     updateUI();
   }
 }
@@ -1329,38 +1401,65 @@ function showNotification(message, type = "success") {
   }, 2500);
 }
 
-function incrementCartItem(productId) {
-  const currentCount = cartItems.get(productId) || 0;
-  cartItems.set(productId, currentCount + 1);
+function incrementCartItem(itemKey) {
+  const item = cartItems.get(itemKey);
+  if (item) {
+    item.quantity += 1;
+  }
   updateUI();
 }
 
-function decrementCartItem(productId) {
-  const currentCount = cartItems.get(productId) || 0;
-  if (currentCount > 1) {
-    cartItems.set(productId, currentCount - 1);
+function decrementCartItem(itemKey) {
+  const item = cartItems.get(itemKey);
+  if (!item) {
+    return;
+  }
+  if (item.quantity > 1) {
+    item.quantity -= 1;
   } else {
-    cartItems.delete(productId);
+    cartItems.delete(itemKey);
   }
   updateUI();
 }
 
-function removeCartItem(productId) {
-  cartItems.delete(productId);
+function removeCartItem(itemKey) {
+  cartItems.delete(itemKey);
   updateUI();
 }
 
-function removeFromWishlist(productId) {
-  wishlistItems.delete(productId);
-  updateUI();
-}
-
-function moveToWishlist(productId) {
-  if (cartItems.has(productId)) {
-    cartItems.delete(productId);
-    wishlistItems.add(productId);
-    updateUI();
+function removeFromWishlist(itemKey) {
+  if (wishlistItems.has(itemKey)) {
+    wishlistItems.delete(itemKey);
+  } else {
+    const keysToDelete = Array.from(wishlistItems.keys()).filter(
+      (key) => key === itemKey || key.startsWith(itemKey + "::")
+    );
+    keysToDelete.forEach((key) => wishlistItems.delete(key));
   }
+  updateUI();
+}
+
+function moveToWishlist(itemKey) {
+  const item = cartItems.get(itemKey);
+  if (!item) {
+    return;
+  }
+  cartItems.delete(itemKey);
+  const wishlistKey = buildItemKey(item.productId, item.variant);
+  wishlistItems.set(wishlistKey, {
+    key: wishlistKey,
+    productId: item.productId,
+    variant: cloneVariant(item.variant),
+  });
+  updateUI();
+}
+
+function addToCartFromWishlist(itemKey) {
+  const item = wishlistItems.get(itemKey);
+  if (!item) {
+    return;
+  }
+  addToCart(item.productId, item.variant);
 }
 
 function handleCheckoutSubmit(event) {
@@ -1456,6 +1555,120 @@ function selectVariantMulti(productId, variantType, variantValue) {
   updateUI();
 }
 
+function cloneVariant(variant) {
+  if (!variant || typeof variant !== "object") {
+    return variant;
+  }
+  return { ...variant };
+}
+
+function buildVariantKey(variant) {
+  if (variant === undefined || variant === null || variant === "") {
+    return "";
+  }
+  if (typeof variant !== "object") {
+    return String(variant);
+  }
+  return Object.keys(variant)
+    .sort()
+    .map((key) => `${key}:${variant[key]}`)
+    .join("|");
+}
+
+function buildItemKey(productId, variant) {
+  const variantKey = buildVariantKey(variant);
+  return variantKey ? `${productId}::${variantKey}` : productId;
+}
+
+function formatVariantLabel(label) {
+  return String(label)
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getVariantDisplayText(product, variant) {
+  if (!product || !product.hasVariants || !variant) {
+    return "";
+  }
+
+  const parts = [];
+  if (product.multiVariantTypes && typeof variant === "object") {
+    const groups = product.variantGroups || [];
+    groups.forEach((group) => {
+      const value = variant[group.variantType];
+      if (value) {
+        parts.push(`${formatVariantLabel(group.variantType)}: ${value}`);
+      }
+    });
+  }
+
+  if (parts.length === 0) {
+    if (typeof variant === "object") {
+      Object.keys(variant)
+        .sort()
+        .forEach((key) => {
+          const value = variant[key];
+          if (value) {
+            parts.push(`${formatVariantLabel(key)}: ${value}`);
+          }
+        });
+    } else {
+      const label = product.variantType
+        ? formatVariantLabel(product.variantType)
+        : "Variant";
+      parts.push(`${label}: ${variant}`);
+    }
+  }
+
+  return parts.join(", ");
+}
+
+function getCartCount() {
+  return Array.from(cartItems.values()).reduce(
+    (sum, item) =>
+      sum + (typeof item === "number" ? item : item.quantity || 0),
+    0
+  );
+}
+
+function getWishlistCount() {
+  return wishlistItems.size;
+}
+
+function isProductInWishlist(productId) {
+  for (const item of wishlistItems.values()) {
+    if (item.productId === productId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isVariantInWishlist(productId, variant) {
+  const key = buildItemKey(productId, variant);
+  return wishlistItems.has(key);
+}
+
+function getWishlistEntries() {
+  return Array.from(wishlistItems.values())
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      product: allProducts.find((p) => p.id === item.productId),
+    }))
+    .filter((item) => item.product);
+}
+
+function getCartEntries() {
+  return Array.from(cartItems.values())
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      product: allProducts.find((p) => p.id === item.productId),
+    }))
+    .filter((item) => item.product);
+}
+
 function sortAndFilterProducts(productsList, category) {
   let filtered = [...productsList];
 
@@ -1492,11 +1705,8 @@ function updateGalleryImage() {
 }
 
 function renderHeader() {
-  const wishlistCount = wishlistItems.size;
-  const cartCount = Array.from(cartItems.values()).reduce(
-    (a, b) => a + b,
-    0
-  );
+  const wishlistCount = getWishlistCount();
+  const cartCount = getCartCount();
   const isDarkMode = themeMode === "dark";
   const themeLabel = isDarkMode ? "Switch to light mode" : "Switch to dark mode";
   const themeIcon = isDarkMode
@@ -1608,7 +1818,7 @@ function renderHeader() {
 }
 
 function renderProductCard(product) {
-  const isInWishlist = wishlistItems.has(product.id);
+  const isInWishlist = isProductInWishlist(product.id);
 
   return `
         <div class="product-card" style="background: ${config.surface_color
@@ -1985,9 +2195,7 @@ function renderSale() {
 }
 
 function renderWishlist() {
-  const wishlistProducts = allProducts.filter((p) =>
-    wishlistItems.has(p.id)
-  );
+  const wishlistEntries = getWishlistEntries();
 
   return `
         <div class="py-20" style="background: ${config.background_color
@@ -1999,7 +2207,7 @@ function renderWishlist() {
               Wishlist
             </h2>
             
-            ${wishlistProducts.length === 0
+            ${wishlistEntries.length === 0
       ? `
               <div class="text-center py-20 fade-in">
                 <p style="font-size: ${config.font_size}px; color: ${config.text_color
@@ -2015,8 +2223,11 @@ function renderWishlist() {
             `
       : `
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                ${wishlistProducts
-        .map((product) => `
+                ${wishlistEntries
+        .map((entry) => {
+          const product = entry.product;
+          const variantText = getVariantDisplayText(product, entry.variant);
+          return `
         <div class="product-card" style="background: ${config.surface_color
     }; border: 1px solid rgba(212, 175, 55, 0.1); position: relative;">
           <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
@@ -2066,10 +2277,17 @@ function renderWishlist() {
     }; opacity: 0.5; font-weight: 300; letter-spacing: 1px;">
                   ${product.theme.replace("-", " ")}
                 </span>
+                ${variantText
+      ? `<p style="font-size: ${config.font_size * 0.75
+      }px; color: ${config.text_color
+      }; opacity: 0.6; font-weight: 300; margin-top: 6px; letter-spacing: 0.5px;">
+                  ${variantText}
+                </p>`
+      : ""
+    }
               </div>
               
-              <button onclick="toggleWishlist('${product.id
-    }')" class="transition-opacity hover:opacity-70">
+              <button onclick="removeFromWishlist('${entry.key}')" class="transition-opacity hover:opacity-70">
                 <svg class="w-5 h-5" fill="${config.primary_action_color}" stroke="${config.primary_action_color}" stroke-width="1.5" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
                 </svg>
@@ -2093,7 +2311,7 @@ function renderWishlist() {
               </div>
               
               <div class="flex flex-col gap-2">
-                <button onclick="addToCart('${product.id}')" ${!product.inStock ? "disabled" : ""
+                <button onclick="addToCartFromWishlist('${entry.key}')" ${!product.inStock ? "disabled" : ""
     } class="btn-primary px-6 py-2 transition-opacity ${product.inStock ? "hover:opacity-80" : ""
     }" style="background: ${product.inStock ? config.primary_action_color : "#9ca3af"
     }; color: ${config.background_color}; font-size: ${config.font_size * 0.875
@@ -2102,14 +2320,15 @@ function renderWishlist() {
                   ${product.inStock ? "ADD" : "OUT"}
                 </button>
                 
-                <button onclick="removeFromWishlist('${product.id}')" class="px-4 py-1 transition-opacity hover:opacity-80" style="border: 1px solid #ff0000; color: #ff0000; font-size: ${config.font_size * 0.75}px; font-weight: 400; letter-spacing: 1px; background: transparent;">
+                <button onclick="removeFromWishlist('${entry.key}')" class="px-4 py-1 transition-opacity hover:opacity-80" style="border: 1px solid #ff0000; color: #ff0000; font-size: ${config.font_size * 0.75}px; font-weight: 400; letter-spacing: 1px; background: transparent;">
                   REMOVE
                 </button>
               </div>
             </div>
           </div>
         </div>
-        `)
+        `;
+        })
         .join("")}
               </div>
             `
@@ -2120,9 +2339,9 @@ function renderWishlist() {
 }
 
 function renderCart() {
-  const cartProducts = allProducts.filter((p) => cartItems.has(p.id));
-  const subtotal = cartProducts.reduce(
-    (sum, p) => sum + p.price * (cartItems.get(p.id) || 0),
+  const cartEntries = getCartEntries();
+  const subtotal = cartEntries.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
     0
   );
 
@@ -2136,7 +2355,7 @@ function renderCart() {
               Cart
             </h2>
             
-            ${cartProducts.length === 0
+            ${cartEntries.length === 0
       ? `
               <div class="text-center py-20 fade-in">
                 <p style="font-size: ${config.font_size}px; color: ${config.text_color
@@ -2153,9 +2372,11 @@ function renderCart() {
       : `
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div class="lg:col-span-2 space-y-4">
-                  ${cartProducts
-        .map((product) => {
-          const quantity = cartItems.get(product.id) || 0;
+                  ${cartEntries
+        .map((item) => {
+          const product = item.product;
+          const quantity = item.quantity || 0;
+          const variantText = getVariantDisplayText(product, item.variant);
           return `
                       <div class="flex gap-6 p-6 fade-in" style="background: ${config.surface_color
             }; border: 1px solid rgba(212, 175, 55, 0.1);">
@@ -2175,10 +2396,18 @@ function renderCart() {
             }; opacity: 0.5; font-weight: 300;">
                             ${product.category}
                           </p>
+                          ${variantText
+            ? `<p style="font-size: ${config.font_size * 0.75
+            }px; color: ${config.text_color
+            }; opacity: 0.6; font-weight: 300; margin-top: 4px;">
+                            ${variantText}
+                          </p>`
+            : ""
+          }
                           
                           <div class="flex items-center gap-6 mt-4">
                             <div class="flex items-center gap-3">
-                              <button onclick="decrementCartItem('${product.id
+                              <button onclick="decrementCartItem('${item.key
             }')" class="w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
             }; font-weight: 300;">
                                 −
@@ -2188,7 +2417,7 @@ function renderCart() {
             }; font-weight: 400; width: 2rem; text-align: center;">
                                 ${quantity}
                               </span>
-                              <button onclick="incrementCartItem('${product.id
+                              <button onclick="incrementCartItem('${item.key
             }')" class="w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
             }; font-weight: 300;">
                                 +
@@ -2196,12 +2425,12 @@ function renderCart() {
                             </div>
                             
                             <div class="flex items-center gap-2 ml-4">
-                              <button onclick="moveToWishlist('${product.id
+                              <button onclick="moveToWishlist('${item.key
             }')" class="px-3 py-1 text-xs transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
             }; font-weight: 300; border-radius: 4px;">
                                 ♡ Wishlist
                               </button>
-                              <button onclick="removeCartItem('${product.id
+                              <button onclick="removeCartItem('${item.key
             }')" class="px-3 py-1 text-xs transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: #ff0000; font-weight: 300; border-radius: 4px;">
                                 ✕ Remove
                               </button>
@@ -2273,15 +2502,15 @@ function renderCart() {
 }
 
 function renderCheckout() {
-  const cartProducts = allProducts.filter((p) => cartItems.has(p.id));
+  const cartEntries = getCartEntries();
   
-  if (cartProducts.length === 0) {
+  if (cartEntries.length === 0) {
     navigate('cart');
     return '';
   }
   
-  const subtotal = cartProducts.reduce(
-    (sum, p) => sum + p.price * (cartItems.get(p.id) || 0),
+  const subtotal = cartEntries.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
     0
   );
   const shipping = 50; // Fixed shipping for demo
@@ -2303,8 +2532,10 @@ function renderCheckout() {
                   </h3>
                   
                   <div class="space-y-4 mb-6">
-                    ${cartProducts.map((product) => {
-                      const quantity = cartItems.get(product.id) || 0;
+                    ${cartEntries.map((item) => {
+                      const product = item.product;
+                      const quantity = item.quantity || 0;
+                      const variantText = getVariantDisplayText(product, item.variant);
                       return `
                         <div class="flex items-center gap-4">
                           <div class="w-16 h-16 flex-shrink-0 overflow-hidden" style="background: ${config.background_color};">
@@ -2312,6 +2543,10 @@ function renderCheckout() {
                           </div>
                           <div class="flex-grow">
                             <h4 style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; font-weight: 400;">${product.name}</h4>
+                            ${variantText
+            ? `<p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.6; margin-top: 4px;">${variantText}</p>`
+            : ""
+          }
                             <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.5;">Qty: ${quantity}</p>
                           </div>
                           <span style="font-size: ${config.font_size * 0.875}px; color: ${config.primary_action_color}; font-weight: 400;">₹${(product.price * quantity).toFixed(2)}</span>
@@ -2601,6 +2836,11 @@ function renderCategoryPage(category) {
 
 function renderGalleryModal() {
   if (!currentGalleryProduct) return "";
+  const galleryVariant = selectedVariants[currentGalleryProduct.id];
+  const isGalleryWishlisted =
+    currentGalleryProduct.hasVariants && galleryVariant
+      ? isVariantInWishlist(currentGalleryProduct.id, galleryVariant)
+      : isProductInWishlist(currentGalleryProduct.id);
 
   return `
         <div class="modal-overlay" onclick="if(event.target === this) closeGallery()">
@@ -3073,14 +3313,14 @@ function renderGalleryModal() {
                     </button>
                     
                     <button onclick="toggleWishlist('${currentGalleryProduct.id
-    }')" class="p-4 transition-opacity hover:opacity-70" style="border: 1px solid ${wishlistItems.has(currentGalleryProduct.id)
+    }')" class="p-4 transition-opacity hover:opacity-70" style="border: 1px solid ${isGalleryWishlisted
       ? config.primary_action_color
       : "rgba(212, 175, 55, 0.3)"
     };">
-                      <svg class="w-6 h-6" fill="${wishlistItems.has(currentGalleryProduct.id)
+                      <svg class="w-6 h-6" fill="${isGalleryWishlisted
       ? config.primary_action_color
       : "none"
-    }" stroke="${wishlistItems.has(currentGalleryProduct.id)
+    }" stroke="${isGalleryWishlisted
       ? config.primary_action_color
       : config.text_color
     }" viewBox="0 0 24 24" stroke-width="1.5">
