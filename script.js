@@ -47,6 +47,19 @@ let filtersVisiblePerCategory = {};
 let selectedVariants = {}; // Tracks selected variant for each product
 let themeMode = "light";
 let hasStoredTheme = false;
+let searchState = {
+  query: "",
+  imagePreview: "",
+  imageAverageColor: null,
+  imageLabel: "",
+  exactMatches: [],
+  similarMatches: [],
+  isSearching: false,
+  sourceProductId: null,
+  lastSearchType: "",
+  searchMessage: "",
+};
+const productColorCache = new Map();
 
 function getStoredTheme() {
   try {
@@ -1714,6 +1727,390 @@ function sortAndFilterProducts(productsList, category) {
   return filtered;
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenize(value) {
+  const normalized = normalizeText(value);
+  return normalized ? normalized.split(" ").filter(Boolean) : [];
+}
+
+function getVariantValues(product) {
+  const values = [];
+  if (product && Array.isArray(product.variantGroups)) {
+    product.variantGroups.forEach((group) => {
+      if (group && Array.isArray(group.variants)) {
+        group.variants.forEach((variant) => {
+          if (variant && variant.value) {
+            values.push(String(variant.value));
+          }
+        });
+      }
+    });
+  } else if (product && Array.isArray(product.variants)) {
+    product.variants.forEach((variant) => {
+      if (variant && variant.value) {
+        values.push(String(variant.value));
+      }
+    });
+  }
+  return values;
+}
+
+function getProductSearchText(product) {
+  const parts = [
+    product.name,
+    product.category,
+    product.theme,
+    product.description,
+    ...getVariantValues(product),
+  ];
+  return normalizeText(parts.join(" "));
+}
+
+function scoreTextMatch(product, query, tokens) {
+  if (!query) return 0;
+  const name = normalizeText(product.name);
+  const category = normalizeText(product.category);
+  const theme = normalizeText(product.theme);
+  const description = normalizeText(product.description);
+  const variantValues = getVariantValues(product).map(normalizeText);
+  const haystack = [name, category, theme, description, ...variantValues].join(" ");
+
+  let score = 0;
+  if (name === query) score += 12;
+  if (name.includes(query)) score += 8;
+  if (category.includes(query)) score += 5;
+  if (theme.includes(query)) score += 4;
+  if (description.includes(query)) score += 2;
+
+  variantValues.forEach((value) => {
+    if (!value) return;
+    if (value === query) score += 4;
+    if (value.includes(query)) score += 2;
+  });
+
+  tokens.forEach((token) => {
+    if (token.length < 2) return;
+    if (haystack.includes(token)) score += 1;
+    if (name.includes(token)) score += 2;
+  });
+
+  return score;
+}
+
+function computeTextSearch(query) {
+  const normalized = normalizeText(query);
+  const tokens = tokenize(normalized);
+  const exactMatches = [];
+  const scored = [];
+
+  allProducts.forEach((product) => {
+    const score = scoreTextMatch(product, normalized, tokens);
+    if (score > 0) {
+      const isExact = normalizeText(product.name) === normalized;
+      if (isExact) {
+        exactMatches.push(product);
+      } else {
+        scored.push({ product, score });
+      }
+    }
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const similarMatches = scored.map((item) => item.product);
+
+  return { exactMatches, similarMatches, normalized };
+}
+
+function setSearchQuery(value) {
+  searchState.query = value;
+}
+
+function handleSearchKey(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    performSearch();
+  }
+}
+
+function clearPhotoSearch() {
+  searchState.imagePreview = "";
+  searchState.imageAverageColor = null;
+  searchState.imageLabel = "";
+  searchState.sourceProductId = null;
+  updateUI();
+}
+
+function clearSearch() {
+  searchState.query = "";
+  searchState.imagePreview = "";
+  searchState.imageAverageColor = null;
+  searchState.imageLabel = "";
+  searchState.exactMatches = [];
+  searchState.similarMatches = [];
+  searchState.isSearching = false;
+  searchState.sourceProductId = null;
+  searchState.lastSearchType = "";
+  searchState.searchMessage = "";
+  currentView = "home";
+  updateUI();
+}
+
+function triggerPhotoSearch() {
+  const input = document.getElementById("photoSearchInput");
+  if (input) {
+    input.click();
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function colorDistance(a, b) {
+  if (!a || !b) return Infinity;
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+async function getAverageColorFromImageSource(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const size = 32;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      canvas.width = size;
+      canvas.height = size;
+      ctx.drawImage(img, 0, 0, size, size);
+      const { data } = ctx.getImageData(0, 0, size, size);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const alpha = data[i + 3];
+        if (alpha < 10) continue;
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count += 1;
+      }
+      if (!count) {
+        resolve(null);
+        return;
+      }
+      resolve({
+        r: Math.round(r / count),
+        g: Math.round(g / count),
+        b: Math.round(b / count),
+      });
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function getProductAverageColor(product) {
+  if (productColorCache.has(product.id)) {
+    return productColorCache.get(product.id);
+  }
+  const color = await getAverageColorFromImageSource(product.images[0]);
+  productColorCache.set(product.id, color);
+  return color;
+}
+
+async function getImageSimilarityScores(queryColor) {
+  if (!queryColor) return [];
+  const scored = await Promise.all(
+    allProducts.map(async (product) => {
+      const color = await getProductAverageColor(product);
+      if (!color) return null;
+      return { product, distance: colorDistance(queryColor, color) };
+    })
+  );
+  return scored.filter(Boolean).sort((a, b) => a.distance - b.distance);
+}
+
+function rankProductsByImage(candidates, scoredList) {
+  if (!scoredList || scoredList.length === 0) {
+    return [...candidates];
+  }
+  const distanceMap = new Map(
+    scoredList.map((item) => [item.product.id, item.distance])
+  );
+  return [...candidates].sort((a, b) => {
+    const distanceA = distanceMap.get(a.id);
+    const distanceB = distanceMap.get(b.id);
+    return (distanceA ?? Infinity) - (distanceB ?? Infinity);
+  });
+}
+
+async function handlePhotoSearchChange(event) {
+  const file = event.target && event.target.files ? event.target.files[0] : null;
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showNotification("Please choose an image file", "error");
+    return;
+  }
+  searchState.imageLabel = file.name;
+  searchState.sourceProductId = null;
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    searchState.imagePreview = dataUrl;
+    searchState.imageAverageColor = await getAverageColorFromImageSource(dataUrl);
+  } catch (error) {
+    showNotification("Unable to load that photo", "error");
+    return;
+  }
+
+  performSearch();
+}
+
+async function searchByProductImage(productId, imageIndex = 0) {
+  const product = allProducts.find((p) => p.id === productId);
+  if (!product) return;
+  const imageUrl = product.images[imageIndex] || product.images[0];
+  searchState.query = "";
+  searchState.imagePreview = imageUrl;
+  searchState.imageLabel = product.name;
+  searchState.sourceProductId = product.id;
+  searchState.imageAverageColor = await getAverageColorFromImageSource(imageUrl);
+  galleryOpen = false;
+  currentGalleryProduct = null;
+  currentGalleryImage = 0;
+  document.body.style.overflow = "";
+  performSearch();
+}
+
+async function performSearch() {
+  const input = document.getElementById("searchInput");
+  const rawQuery = input ? input.value : searchState.query;
+  const query = (rawQuery || "").trim();
+  const hasQuery = query.length > 0;
+  const hasImage = Boolean(searchState.imagePreview);
+
+  searchState.query = query;
+  searchState.searchMessage = "";
+
+  if (!hasQuery && !hasImage) {
+    showNotification("Type a search or add a photo", "error");
+    return;
+  }
+
+  searchState.isSearching = true;
+  searchState.exactMatches = [];
+  searchState.similarMatches = [];
+  currentView = "search";
+  updateUI();
+
+  let textResults = null;
+  if (hasQuery) {
+    textResults = computeTextSearch(query);
+  }
+
+  let imageScores = [];
+  if (hasImage) {
+    if (!searchState.imageAverageColor && searchState.imagePreview) {
+      searchState.imageAverageColor = await getAverageColorFromImageSource(
+        searchState.imagePreview
+      );
+    }
+    if (searchState.imageAverageColor) {
+      imageScores = await getImageSimilarityScores(
+        searchState.imageAverageColor
+      );
+    }
+  }
+
+  if (hasImage && !searchState.imageAverageColor) {
+    if (textResults) {
+      searchState.exactMatches = textResults.exactMatches;
+      searchState.similarMatches = textResults.similarMatches;
+      searchState.lastSearchType = "text";
+      searchState.searchMessage =
+        "Photo analysis failed. Showing text matches instead.";
+    } else {
+      searchState.searchMessage = "Photo analysis failed. Please try again.";
+    }
+    searchState.isSearching = false;
+    updateUI();
+    return;
+  }
+
+  if (hasImage) {
+    if (
+      hasQuery &&
+      textResults &&
+      (textResults.exactMatches.length ||
+        textResults.similarMatches.length)
+    ) {
+      const candidates = [
+        ...textResults.exactMatches,
+        ...textResults.similarMatches,
+      ];
+      const ranked = rankProductsByImage(candidates, imageScores);
+      searchState.exactMatches = textResults.exactMatches;
+      searchState.similarMatches = ranked.filter(
+        (product) =>
+          !searchState.exactMatches.some(
+            (exact) => exact.id === product.id
+          )
+      );
+      searchState.lastSearchType = "text+photo";
+    } else {
+      const exactProduct = searchState.sourceProductId
+        ? allProducts.find((p) => p.id === searchState.sourceProductId)
+        : null;
+      searchState.exactMatches = exactProduct ? [exactProduct] : [];
+      searchState.similarMatches = imageScores
+        .map((item) => item.product)
+        .filter(
+          (product) =>
+            !searchState.exactMatches.some(
+              (exact) => exact.id === product.id
+            )
+        );
+      searchState.lastSearchType = "photo";
+    }
+  } else if (textResults) {
+    searchState.exactMatches = textResults.exactMatches;
+    searchState.similarMatches = textResults.similarMatches;
+    searchState.lastSearchType = "text";
+  }
+
+  searchState.isSearching = false;
+  updateUI();
+}
+
 function updateGalleryImage() {
   const galleryImg = document.getElementById("gallery-image");
   const galleryLabel = document.getElementById("gallery-label");
@@ -1721,6 +2118,68 @@ function updateGalleryImage() {
     galleryImg.src = currentGalleryProduct.images[currentGalleryImage];
     galleryLabel.textContent = "";
   }
+}
+
+function renderSearchBar() {
+  const safeQuery = escapeHtml(searchState.query);
+  const hasPhoto = Boolean(searchState.imagePreview);
+  const photoLabel = searchState.imageLabel
+    ? escapeHtml(searchState.imageLabel)
+    : "Photo ready";
+
+  return `
+            <div class="mt-6">
+              <div class="flex flex-col md:flex-row md:items-center gap-4">
+                <div class="flex-1">
+                  <label class="sr-only" for="searchInput">Search products</label>
+                  <input
+                    id="searchInput"
+                    type="text"
+                    value="${safeQuery}"
+                    oninput="setSearchQuery(this.value)"
+                    onkeydown="handleSearchKey(event)"
+                    placeholder="Search by name, theme, category, or material"
+                    class="w-full px-5 py-3"
+                    style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.25); color: ${config.text_color}; font-size: ${config.font_size * 0.9}px; border-radius: 9999px;"
+                  />
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    onclick="performSearch()"
+                    class="btn-primary px-7 py-3 transition-opacity hover:opacity-80"
+                    style="background: ${config.primary_action_color}; color: ${config.background_color}; font-size: ${config.font_size * 0.85}px; font-weight: 400; letter-spacing: 1px;"
+                  >
+                    SEARCH
+                  </button>
+                  <button
+                    onclick="triggerPhotoSearch()"
+                    class="px-6 py-3 transition-opacity hover:opacity-70"
+                    style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.85}px; font-weight: 300; letter-spacing: 1px; border-radius: 9999px;"
+                  >
+                    PHOTO
+                  </button>
+                </div>
+              </div>
+              <div class="mt-3 flex flex-wrap items-center gap-3">
+                <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.6; letter-spacing: 1px;">
+                  Upload or snap a photo to find similar pieces.
+                </p>
+                ${hasPhoto
+      ? `
+                    <div class="flex items-center gap-2 px-3 py-2" style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: 9999px;">
+                      <img src="${searchState.imagePreview}" alt="Search preview" style="width: 32px; height: 32px; object-fit: cover; border-radius: 9999px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                      <span style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.7;">${photoLabel}</span>
+                      <button onclick="clearPhotoSearch()" class="transition-opacity hover:opacity-70" style="font-size: ${config.font_size * 0.75}px; color: ${config.primary_action_color}; letter-spacing: 1px;">
+                        Remove
+                      </button>
+                    </div>
+                  `
+      : ""
+    }
+              </div>
+              <input id="photoSearchInput" type="file" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoSearchChange(event)" />
+            </div>
+          `;
 }
 
 function renderHeader() {
@@ -1831,6 +2290,7 @@ function renderHeader() {
       .join("")}
               </div>
             </nav>
+            ${renderSearchBar()}
           </div>
         </header>
       `;
@@ -2857,6 +3317,108 @@ function renderCategoryPage(category) {
       `;
 }
 
+function renderSearchPage() {
+  const query = searchState.query ? escapeHtml(searchState.query) : "";
+  const hasPhoto = Boolean(searchState.imagePreview);
+  const exactMatches = searchState.exactMatches || [];
+  const similarMatches = searchState.similarMatches || [];
+  const hasExact = exactMatches.length > 0;
+  const hasSimilar = similarMatches.length > 0;
+
+  const summaryParts = [];
+  if (query) summaryParts.push(`Text: "${query}"`);
+  if (hasPhoto) summaryParts.push("Photo search enabled");
+  const summary =
+    summaryParts.length > 0
+      ? summaryParts.join(" | ")
+      : "Start typing or upload a photo to search.";
+
+  const photoNote =
+    hasPhoto && !searchState.isSearching
+      ? "Photo matches are based on color similarity."
+      : "";
+
+  let resultsMarkup = "";
+
+  if (searchState.isSearching) {
+    resultsMarkup = `
+          <div class="text-center py-20 fade-in">
+            <p style="font-size: ${config.font_size}px; color: ${config.text_color}; opacity: 0.7; font-weight: 300;">
+              Searching for the closest matches...
+            </p>
+          </div>
+        `;
+  } else if (!hasExact && !hasSimilar) {
+    resultsMarkup = `
+          <div class="text-center py-20 fade-in">
+            <p style="font-size: ${config.font_size}px; color: ${config.text_color}; opacity: 0.6; margin-bottom: 24px; font-weight: 300;">
+              No results found. Try a broader search or upload a different photo.
+            </p>
+            <button onclick="clearSearch()" class="btn-primary px-8 py-3" style="background: ${config.primary_action_color}; color: ${config.background_color}; font-size: ${config.font_size * 0.875}px; font-weight: 400; letter-spacing: 2px;">
+              CLEAR SEARCH
+            </button>
+          </div>
+        `;
+  } else {
+    if (hasExact) {
+      resultsMarkup += `
+            <div class="mb-12">
+              <h3 class="mb-6" style="font-size: ${config.font_size * 1.125}px; color: ${config.primary_action_color}; font-weight: 400; letter-spacing: 2px;">
+                Exact matches (${exactMatches.length})
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                ${exactMatches.map((product) => renderProductCard(product)).join("")}
+              </div>
+            </div>
+          `;
+    }
+
+    if (hasSimilar) {
+      resultsMarkup += `
+            <div>
+              <h3 class="mb-6" style="font-size: ${config.font_size * 1.125}px; color: ${config.primary_action_color}; font-weight: 400; letter-spacing: 2px;">
+                ${hasExact ? "Similar items" : "Similar items (no exact match found)"}
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                ${similarMatches.map((product) => renderProductCard(product)).join("")}
+              </div>
+            </div>
+          `;
+    }
+  }
+
+  return `
+        <div class="py-20" style="background: ${config.background_color}; min-height: 100%;">
+          <div class="max-w-7xl mx-auto px-6">
+            <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-12">
+              <div>
+                <h2 class="font-heading" style="font-size: ${config.font_size * 2}px; color: ${config.text_color}; font-weight: 300; letter-spacing: 3px;">
+                  Search Results
+                </h2>
+                <p style="font-size: ${config.font_size * 0.875}px; color: ${config.text_color}; opacity: 0.6; font-weight: 300; margin-top: 8px;">
+                  ${summary}
+                </p>
+                ${searchState.searchMessage
+      ? `<p style="font-size: ${config.font_size * 0.85}px; color: ${config.primary_action_color}; margin-top: 8px; letter-spacing: 1px;">${escapeHtml(
+        searchState.searchMessage
+      )}</p>`
+      : ""
+    }
+                ${photoNote
+      ? `<p style="font-size: ${config.font_size * 0.8}px; color: ${config.text_color}; opacity: 0.5; margin-top: 6px;">${photoNote}</p>`
+      : ""
+    }
+              </div>
+              <button onclick="clearSearch()" class="px-6 py-3 transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.85}px; font-weight: 300; letter-spacing: 2px;">
+                CLEAR SEARCH
+              </button>
+            </div>
+            ${resultsMarkup}
+          </div>
+        </div>
+      `;
+}
+
 function renderGalleryModal() {
   if (!currentGalleryProduct) return "";
   const galleryVariant = selectedVariants[currentGalleryProduct.id];
@@ -3348,6 +3910,12 @@ function renderGalleryModal() {
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
                       </svg>
                     </button>
+
+                    <button onclick="searchByProductImage('${currentGalleryProduct.id}', ${currentGalleryImage})" class="p-4 transition-opacity hover:opacity-70" style="border: 1px solid rgba(212, 175, 55, 0.3);" aria-label="Find similar items" title="Find similar items">
+                      <svg class="w-6 h-6" fill="none" stroke="${config.text_color}" viewBox="0 0 24 24" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 4a7 7 0 015.657 11.07l3.636 3.637-1.414 1.414-3.637-3.636A7 7 0 1111 4z"></path>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3376,6 +3944,8 @@ function updateUI() {
     content += renderCart();
   } else if (currentView === "checkout") {
     content += renderCheckout();
+  } else if (currentView === "search") {
+    content += renderSearchPage();
   } else if (products[currentView]) {
     content += renderCategoryPage(currentView);
   }
@@ -3553,6 +4123,8 @@ function optimizeImages() {
     img.style.display = 'block';
   });
 }
+
+
 
 // Call after each update
 const originalUpdateUI = updateUI;
