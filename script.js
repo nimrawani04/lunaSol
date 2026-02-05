@@ -1871,9 +1871,14 @@ function clearSearch() {
   updateUI();
 }
 
-function triggerPhotoSearch() {
-  const input = document.getElementById("photoSearchInput");
+function triggerPhotoSearch(mode = "upload") {
+  const inputId =
+    mode === "camera"
+      ? "photoSearchCameraInput"
+      : "photoSearchUploadInput";
+  const input = document.getElementById(inputId);
   if (input) {
+    input.value = "";
     input.click();
   }
 }
@@ -2143,7 +2148,7 @@ function renderSearchBar() {
                     style="background: ${config.surface_color}; border: 1px solid rgba(212, 175, 55, 0.25); color: ${config.text_color}; font-size: ${config.font_size * 0.9}px; border-radius: 9999px;"
                   />
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
                   <button
                     onclick="performSearch()"
                     class="btn-primary px-7 py-3 transition-opacity hover:opacity-80"
@@ -2152,17 +2157,24 @@ function renderSearchBar() {
                     SEARCH
                   </button>
                   <button
-                    onclick="triggerPhotoSearch()"
+                    onclick="triggerPhotoSearch('upload')"
                     class="px-6 py-3 transition-opacity hover:opacity-70"
                     style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.85}px; font-weight: 300; letter-spacing: 1px; border-radius: 9999px;"
                   >
-                    PHOTO
+                    UPLOAD PHOTO
+                  </button>
+                  <button
+                    onclick="triggerPhotoSearch('camera')"
+                    class="px-6 py-3 transition-opacity hover:opacity-70"
+                    style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.85}px; font-weight: 300; letter-spacing: 1px; border-radius: 9999px;"
+                  >
+                    TAKE PHOTO
                   </button>
                 </div>
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-3">
                 <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.6; letter-spacing: 1px;">
-                  Upload or snap a photo to find similar pieces.
+                  Upload or take a photo to find similar pieces.
                 </p>
                 ${hasPhoto
       ? `
@@ -2177,7 +2189,8 @@ function renderSearchBar() {
       : ""
     }
               </div>
-              <input id="photoSearchInput" type="file" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoSearchChange(event)" />
+              <input id="photoSearchUploadInput" type="file" accept="image/*" style="display: none;" onchange="handlePhotoSearchChange(event)" />
+              <input id="photoSearchCameraInput" type="file" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoSearchChange(event)" />
             </div>
           `;
 }
