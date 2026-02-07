@@ -65,10 +65,10 @@ const customOrderStore = new Map();
 
 const customizationOptions = {
   categories: [
-    { id: "bracelet", label: "Bracelet", basePrice: 260, layout: "circle" },
-    { id: "keychain", label: "Keychain", basePrice: 180, layout: "line" },
-    { id: "necklace", label: "Necklace", basePrice: 320, layout: "arc" },
-    { id: "anklet", label: "Anklet", basePrice: 230, layout: "circle" },
+    { id: "bracelet", label: "Bracelet", basePrice: 250, layout: "circle" },
+    { id: "keychain", label: "Keychain", basePrice: 200, layout: "line" },
+    { id: "necklace", label: "Necklace", basePrice: 350, layout: "arc" },
+    { id: "anklet", label: "Anklet", basePrice: 220, layout: "circle" },
   ],
   beadColors: [
     { name: "Baby Pink", value: "#f2b7ed" },
@@ -116,6 +116,10 @@ const defaultCustomizationState = {
 let customizationState = createCustomizationState();
 let customizationPreviewTimer = null;
 let customizationPreviewToken = 0;
+let customizationPreviewObjectUrl = null;
+
+const AI_PREVIEW_ENDPOINT = "";
+const AI_PREVIEW_API_KEY = "";
 
 function getStoredTheme() {
   try {
@@ -1785,6 +1789,14 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, num));
 }
 
+function normalizeBeadCount(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return defaultCustomizationState.beadCount;
+  }
+  return Math.max(10, Math.round(num));
+}
+
 function truncateText(value, maxLength) {
   const text = String(value || "");
   if (text.length <= maxLength) {
@@ -1940,6 +1952,119 @@ function buildBeadColorSequence(arrangement, palette, count, seed) {
   return sequence;
 }
 
+function getPromptPreferences(prompt) {
+  const text = normalizeText(prompt);
+  if (!text) {
+    return {};
+  }
+
+  const colors = [];
+  const colorMap = [
+    { keys: ["pink", "rose", "blush"], value: "#f2b7ed" },
+    { keys: ["blue", "ocean", "navy", "sky"], value: "#4682b4" },
+    { keys: ["green", "emerald", "mint"], value: "#50c878" },
+    { keys: ["gold", "amber", "honey"], value: "#ffbf00" },
+    { keys: ["purple", "amethyst", "lavender"], value: "#9966cc" },
+    { keys: ["coral", "peach"], value: "#db6a7b" },
+    { keys: ["white", "pearl", "ivory"], value: "#f0ead6" },
+    { keys: ["black", "onyx"], value: "#353535" },
+  ];
+
+  colorMap.forEach((color) => {
+    if (color.keys.some((key) => text.includes(key))) {
+      colors.push(color.value);
+    }
+  });
+
+  let arrangement = null;
+  if (text.includes("gradient") || text.includes("ombre") || text.includes("fade")) {
+    arrangement = "gradient";
+  } else if (text.includes("alternate") || text.includes("alternating") || text.includes("stripe")) {
+    arrangement = "alternating";
+  } else if (text.includes("cluster") || text.includes("chunk")) {
+    arrangement = "clustered";
+  } else if (text.includes("random") || text.includes("mixed")) {
+    arrangement = "random";
+  }
+
+  let charmPlacement = null;
+  if (text.includes("center") || text.includes("centre") || text.includes("middle")) {
+    charmPlacement = "center";
+  } else if (text.includes("end") || text.includes("edges")) {
+    charmPlacement = "ends";
+  } else if (text.includes("scatter") || text.includes("sprinkle")) {
+    charmPlacement = "scattered";
+  }
+
+  const charms = [];
+  if (text.includes("heart") || text.includes("love")) {
+    charms.push("heart");
+  }
+  if (text.includes("star")) {
+    charms.push("star");
+  }
+  if (text.includes("moon")) {
+    charms.push("moon");
+  }
+  if (text.includes("flower") || text.includes("floral")) {
+    charms.push("flower");
+  }
+  if (text.includes("initial") || text.includes("letter") || text.includes("monogram")) {
+    charms.push("initial");
+  }
+
+  let category = null;
+  if (text.includes("bracelet")) {
+    category = "bracelet";
+  } else if (text.includes("keychain")) {
+    category = "keychain";
+  } else if (text.includes("necklace")) {
+    category = "necklace";
+  } else if (text.includes("anklet")) {
+    category = "anklet";
+  }
+
+  return {
+    colors,
+    arrangement,
+    charmPlacement,
+    charms,
+    category,
+  };
+}
+
+function getEffectiveCustomizationState(state) {
+  const base = {
+    ...state,
+    beadColors: Array.isArray(state.beadColors)
+      ? [...state.beadColors]
+      : [...defaultCustomizationState.beadColors],
+    charms: Array.isArray(state.charms)
+      ? [...state.charms]
+      : [...defaultCustomizationState.charms],
+  };
+
+  const preferences = getPromptPreferences(state.prompt);
+
+  if (preferences.category) {
+    base.category = preferences.category;
+  }
+  if (preferences.arrangement) {
+    base.arrangement = preferences.arrangement;
+  }
+  if (preferences.charmPlacement) {
+    base.charmPlacement = preferences.charmPlacement;
+  }
+  if (preferences.charms && preferences.charms.length) {
+    base.charms = Array.from(new Set(preferences.charms));
+  }
+  if (preferences.colors && preferences.colors.length) {
+    base.beadColors = Array.from(new Set(preferences.colors));
+  }
+
+  return base;
+}
+
 function buildBeadLayout(categoryId, beadCount) {
   const width = 640;
   const height = 420;
@@ -1955,7 +2080,7 @@ function buildBeadLayout(categoryId, beadCount) {
     const startY = 80;
     const endY = height - 80;
     const spacing = (endY - startY) / (count - 1);
-    const beadRadius = clampNumber(220 / count, 6, 14);
+    const beadRadius = clampNumber(220 / count, 4, 14);
 
     for (let i = 0; i < count; i += 1) {
       beads.push({ x, y: startY + spacing * i, r: beadRadius });
@@ -1972,7 +2097,7 @@ function buildBeadLayout(categoryId, beadCount) {
     center = { x: width / 2, y: height / 2 + 50 };
     const startAngle = Math.PI * 1.15;
     const endAngle = Math.PI * -0.15;
-    const beadRadius = clampNumber(200 / count, 6, 13);
+    const beadRadius = clampNumber(200 / count, 4, 13);
 
     for (let i = 0; i < count; i += 1) {
       const t = count === 1 ? 0.5 : i / (count - 1);
@@ -1995,7 +2120,7 @@ function buildBeadLayout(categoryId, beadCount) {
   } else {
     const radius = 140;
     center = { x: width / 2, y: height / 2 };
-    const beadRadius = clampNumber(220 / count, 6, 14);
+    const beadRadius = clampNumber(220 / count, 4, 14);
 
     for (let i = 0; i < count; i += 1) {
       const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
@@ -2157,36 +2282,37 @@ function getPromptMood(prompt) {
 }
 
 function buildCustomizationPreview(state) {
-  const beadCount = clampNumber(state.beadCount, 10, 32);
+  const effectiveState = getEffectiveCustomizationState(state);
+  const beadCount = normalizeBeadCount(effectiveState.beadCount);
   const palette =
-    state.beadColors && state.beadColors.length
-      ? state.beadColors
+    effectiveState.beadColors && effectiveState.beadColors.length
+      ? effectiveState.beadColors
       : [...defaultCustomizationState.beadColors];
   const charms =
-    state.charms && state.charms.length
-      ? state.charms
+    effectiveState.charms && effectiveState.charms.length
+      ? effectiveState.charms
       : [...defaultCustomizationState.charms];
   const seed = hashString(
     [
-      state.category,
+      effectiveState.category,
       beadCount,
-      state.arrangement,
+      effectiveState.arrangement,
       palette.join("|"),
-      state.charmPlacement,
+      effectiveState.charmPlacement,
       charms.join("|"),
-      state.prompt || "",
+      effectiveState.prompt || "",
     ].join("::")
   );
   const beadColors = buildBeadColorSequence(
-    state.arrangement,
+    effectiveState.arrangement,
     palette,
     beadCount,
     seed
   );
-  const layout = buildBeadLayout(state.category, beadCount);
-  const mood = getPromptMood(state.prompt);
-  const initialChar = getCustomizationInitial(state.prompt);
-  const charmPositions = getCharmPositions(layout, state.charmPlacement);
+  const layout = buildBeadLayout(effectiveState.category, beadCount);
+  const mood = getPromptMood(effectiveState.prompt);
+  const initialChar = getCustomizationInitial(effectiveState.prompt);
+  const charmPositions = getCharmPositions(layout, effectiveState.charmPlacement);
 
   const beadSvg = layout.beads
     .map((bead, index) => {
@@ -2240,7 +2366,7 @@ function buildCustomizationPreview(state) {
 
   const categoryLabel = getCustomizationOptionLabel(
     customizationOptions.categories,
-    state.category
+    effectiveState.category
   );
   const label = `${categoryLabel} preview with ${beadCount} beads`;
 
@@ -2251,20 +2377,21 @@ function buildCustomizationPreview(state) {
 }
 
 function buildCustomizationMetaForStorage(state) {
+  const effectiveState = getEffectiveCustomizationState(state);
   return {
-    category: state.category,
+    category: effectiveState.category,
     beadColors:
-      state.beadColors && state.beadColors.length
-        ? state.beadColors
+      effectiveState.beadColors && effectiveState.beadColors.length
+        ? effectiveState.beadColors
         : [...defaultCustomizationState.beadColors],
-    arrangement: state.arrangement,
-    charmPlacement: state.charmPlacement,
+    arrangement: effectiveState.arrangement,
+    charmPlacement: effectiveState.charmPlacement,
     charms:
-      state.charms && state.charms.length
-        ? state.charms
+      effectiveState.charms && effectiveState.charms.length
+        ? effectiveState.charms
         : [...defaultCustomizationState.charms],
-    beadCount: clampNumber(state.beadCount, 10, 32),
-    prompt: state.prompt || "",
+    beadCount: normalizeBeadCount(effectiveState.beadCount),
+    prompt: effectiveState.prompt || "",
   };
 }
 
@@ -2303,8 +2430,8 @@ function buildCustomizationSummaryParts(state) {
 
 function calculateCustomizationPrice(meta) {
   const category = getCustomizationCategory(meta.category);
-  const basePrice = category ? category.basePrice : 260;
-  const beadCount = clampNumber(meta.beadCount, 10, 32);
+  const basePrice = category ? category.basePrice : 250;
+  const beadCount = normalizeBeadCount(meta.beadCount);
   const beadCost = Math.max(0, beadCount - 10) * 4;
   const charmCost = (meta.charms ? meta.charms.length : 0) * 25;
   const promptCost = meta.prompt ? 15 : 0;
@@ -2413,6 +2540,8 @@ function scheduleCustomizationPreview(options = {}) {
     } else {
       updateCustomizationPreviewDom();
     }
+
+    requestAiPreview(customizationState, token);
   }, 250);
 }
 
@@ -2423,7 +2552,7 @@ function handleCustomizationPromptInput(value) {
 }
 
 function handleCustomizationBeadCountInput(value) {
-  customizationState.beadCount = clampNumber(value, 10, 32);
+  customizationState.beadCount = normalizeBeadCount(value);
   const beadCountLabel = document.getElementById("customization-bead-count");
   if (beadCountLabel) {
     beadCountLabel.textContent = customizationState.beadCount;
@@ -2464,9 +2593,6 @@ function toggleCustomizationColor(value) {
       return;
     }
     current.delete(value);
-  } else if (current.size >= 4) {
-    showNotification("Select up to 4 colors", "error");
-    return;
   } else {
     current.add(value);
   }
@@ -2492,6 +2618,155 @@ function toggleCustomizationCharm(value) {
   scheduleCustomizationPreview({ render: true });
 }
 
+function getPreviewFilename(category, url) {
+  const safeCategory = String(category || "custom")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  let extension = "png";
+  const lowerUrl = String(url || "").toLowerCase();
+  if (lowerUrl.startsWith("data:image/svg")) {
+    extension = "svg";
+  } else if (lowerUrl.startsWith("data:image/jpeg")) {
+    extension = "jpg";
+  } else if (lowerUrl.startsWith("data:image/webp")) {
+    extension = "webp";
+  } else if (lowerUrl.startsWith("data:image/png")) {
+    extension = "png";
+  }
+  return `lunasol-${safeCategory || "custom"}-preview.${extension}`;
+}
+
+async function downloadCustomizationPreview() {
+  const url = customizationState.previewUrl;
+  if (!url) {
+    showNotification("Generate a preview first", "error");
+    return;
+  }
+
+  let downloadUrl = url;
+  let shouldRevoke = false;
+
+  if (!url.startsWith("data:")) {
+    try {
+      const response = await fetch(url, { mode: "cors" });
+      if (response.ok) {
+        const blob = await response.blob();
+        downloadUrl = URL.createObjectURL(blob);
+        shouldRevoke = true;
+      }
+    } catch (error) {
+      // Fallback to direct download
+    }
+  }
+
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = getPreviewFilename(customizationState.category, downloadUrl);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  if (shouldRevoke) {
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+  }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Failed to read preview image"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function resolvePreviewUrlForStorage(url) {
+  if (!url) {
+    return "";
+  }
+  if (String(url).startsWith("blob:")) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        return url;
+      }
+      const blob = await response.blob();
+      const dataUrl = await blobToDataUrl(blob);
+      return dataUrl;
+    } catch (error) {
+      return url;
+    }
+  }
+  return url;
+}
+
+async function requestAiPreview(state, token) {
+  if (!AI_PREVIEW_ENDPOINT) {
+    return;
+  }
+  const effectiveState = getEffectiveCustomizationState(state);
+  const payload = {
+    category: effectiveState.category,
+    beadColors: effectiveState.beadColors,
+    arrangement: effectiveState.arrangement,
+    charmPlacement: effectiveState.charmPlacement,
+    charms: effectiveState.charms,
+    beadCount: normalizeBeadCount(effectiveState.beadCount),
+    prompt: effectiveState.prompt,
+  };
+
+  try {
+    const response = await fetch(AI_PREVIEW_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(AI_PREVIEW_API_KEY ? { Authorization: `Bearer ${AI_PREVIEW_API_KEY}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    let aiUrl = "";
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("image/")) {
+      const blob = await response.blob();
+      if (customizationPreviewObjectUrl) {
+        URL.revokeObjectURL(customizationPreviewObjectUrl);
+      }
+      customizationPreviewObjectUrl = URL.createObjectURL(blob);
+      aiUrl = customizationPreviewObjectUrl;
+    } else {
+      const data = await response.json();
+      aiUrl =
+        data.imageUrl ||
+        data.url ||
+        data.image ||
+        (data.data && data.data[0] && data.data[0].url) ||
+        "";
+      if (!aiUrl && data.b64_json) {
+        aiUrl = `data:image/png;base64,${data.b64_json}`;
+      }
+    }
+
+    if (!aiUrl) {
+      return;
+    }
+    if (token !== customizationPreviewToken) {
+      return;
+    }
+
+    customizationState.previewUrl = aiUrl;
+    customizationState.previewLabel = "AI photo-real render";
+    updateCustomizationPreviewDom();
+  } catch (error) {
+    // Ignore AI preview errors and keep SVG preview
+  }
+}
+
 function resetCustomization() {
   const previewUrl = customizationState.previewUrl;
   const previewLabel = customizationState.previewLabel;
@@ -2513,7 +2788,9 @@ async function addCustomOrderToCart() {
   }
 
   const productId = `${CUSTOM_ORDER_PREFIX}-${Date.now()}`;
-  const preview = buildCustomizationPreview(customizationState);
+  const fallbackPreview = buildCustomizationPreview(customizationState);
+  const previewUrl = customizationState.previewUrl || fallbackPreview.dataUrl;
+  const storedPreviewUrl = await resolvePreviewUrlForStorage(previewUrl);
   const categoryLabel = getCustomizationOptionLabel(
     customizationOptions.categories,
     meta.category
@@ -2522,6 +2799,7 @@ async function addCustomOrderToCart() {
   const variant = {
     ...displayVariant,
     custom_meta: JSON.stringify(meta),
+    preview_url: storedPreviewUrl,
   };
 
   const product = {
@@ -2533,7 +2811,7 @@ async function addCustomOrderToCart() {
     sale: false,
     inStock: true,
     isNew: true,
-    images: [preview.dataUrl],
+    images: [storedPreviewUrl || fallbackPreview.dataUrl],
     description: "Custom order with AI preview",
     hasVariants: true,
     multiVariantTypes: true,
@@ -2613,6 +2891,7 @@ function ensureCustomOrderFromRecord(record) {
     return;
   }
 
+  const storedPreviewUrl = record.variant && record.variant.preview_url;
   const previewState = {
     ...createCustomizationState(),
     category: meta.category || defaultCustomizationState.category,
@@ -2625,7 +2904,7 @@ function ensureCustomOrderFromRecord(record) {
     charms: Array.isArray(meta.charms)
       ? meta.charms
       : [...defaultCustomizationState.charms],
-    beadCount: clampNumber(meta.beadCount, 10, 32),
+    beadCount: normalizeBeadCount(meta.beadCount),
     prompt: meta.prompt || "",
   };
   const preview = buildCustomizationPreview(previewState);
@@ -2643,7 +2922,7 @@ function ensureCustomOrderFromRecord(record) {
     sale: false,
     inStock: true,
     isNew: true,
-    images: [preview.dataUrl],
+    images: [storedPreviewUrl || preview.dataUrl],
     description: "Custom order with AI preview",
     hasVariants: true,
     multiVariantTypes: true,
@@ -3237,6 +3516,7 @@ function renderHeader() {
       "combo_sets",
       "anklets",
       "knitting_and_crochet",
+      "customize",
     ]
       .map((view) => {
         const labels = {
@@ -3250,6 +3530,7 @@ function renderHeader() {
           combo_sets: "Combo sets",
           anklets: "Anklets",
           knitting_and_crochet: "Knitting & Crochet",
+          customize: "Customize",
         };
         const isActive = currentView === view;
         return `
@@ -3449,7 +3730,7 @@ function renderCustomizationSection() {
                   </div>
                   <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
     }; opacity: 0.5; margin-top: 12px;">
-                    Select up to 4 colors to blend into your design.
+                    Select as many colors as you like to blend into your design.
                   </p>
                 </div>
 
@@ -3534,10 +3815,12 @@ function renderCustomizationSection() {
                       ${customizationState.beadCount}
                     </span>
                   </div>
-                  <input type="range" min="10" max="32" value="${customizationState.beadCount}" oninput="handleCustomizationBeadCountInput(this.value)" class="w-full" style="accent-color: ${config.primary_action_color};">
+                  <input type="number" min="10" value="${customizationState.beadCount}" oninput="handleCustomizationBeadCountInput(this.value)" class="w-full px-4 py-3" style="background: ${config.surface_color
+    }; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
+    }; font-size: ${config.font_size * 0.875}px; border-radius: 6px;">
                   <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
     }; opacity: 0.5; margin-top: 8px;">
-                    Adjust the length to match your style.
+                    Enter any bead count (10+). More beads = longer length.
                   </p>
                 </div>
 
@@ -3553,7 +3836,7 @@ function renderCustomizationSection() {
     }; font-size: ${config.font_size * 0.875}px; border-radius: 6px; resize: vertical;">${promptValue}</textarea>
                   <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
     }; opacity: 0.5; margin-top: 8px;">
-                    Example: soft pastel, gold accents, minimal.
+                    Example: soft pastel, gold accents, minimal. Prompt words can override selections above.
                   </p>
                 </div>
               </div>
@@ -3682,6 +3965,10 @@ function renderCustomizationSection() {
     }; font-size: ${config.font_size * 0.875}px; font-weight: 400; letter-spacing: 2px;">
                       Add Custom Order
                     </button>
+                    <button onclick="downloadCustomizationPreview()" class="px-6 py-3 transition-opacity hover:opacity-80" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
+    }; font-size: ${config.font_size * 0.875}px; font-weight: 300; letter-spacing: 1px; border-radius: 4px;">
+                      Download Preview
+                    </button>
                     <button onclick="resetCustomization()" class="px-6 py-3 transition-opacity hover:opacity-80" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
     }; font-size: ${config.font_size * 0.875}px; font-weight: 300; letter-spacing: 1px; border-radius: 4px;">
                       Reset
@@ -3692,6 +3979,14 @@ function renderCustomizationSection() {
             </div>
           </div>
         </section>
+      `;
+}
+
+function renderCustomizationPage() {
+  return `
+        <div class="py-20" style="background: ${config.background_color}; min-height: 100%;">
+          ${renderCustomizationSection()}
+        </div>
       `;
 }
 
@@ -3794,8 +4089,6 @@ function renderHome() {
           `
       : ""
     }
-
-          ${renderCustomizationSection()}
 
           <section id="collections" class="py-24" style="background: ${config.background_color
     };">
@@ -5252,6 +5545,8 @@ function updateUI() {
     content += renderCheckout();
   } else if (currentView === "search") {
     content += renderSearchPage();
+  } else if (currentView === "customize") {
+    content += renderCustomizationPage();
   } else if (products[currentView]) {
     content += renderCategoryPage(currentView);
   }
