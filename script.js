@@ -60,6 +60,62 @@ let searchState = {
   searchMessage: "",
 };
 const productColorCache = new Map();
+const CUSTOM_ORDER_PREFIX = "custom-order";
+const customOrderStore = new Map();
+
+const customizationOptions = {
+  categories: [
+    { id: "bracelet", label: "Bracelet", basePrice: 260, layout: "circle" },
+    { id: "keychain", label: "Keychain", basePrice: 180, layout: "line" },
+    { id: "necklace", label: "Necklace", basePrice: 320, layout: "arc" },
+    { id: "anklet", label: "Anklet", basePrice: 230, layout: "circle" },
+  ],
+  beadColors: [
+    { name: "Baby Pink", value: "#f2b7ed" },
+    { name: "Ocean Blue", value: "#4682b4" },
+    { name: "Emerald Green", value: "#50c878" },
+    { name: "Amber Gold", value: "#ffbf00" },
+    { name: "Amethyst", value: "#9966cc" },
+    { name: "Coral", value: "#db6a7b" },
+    { name: "Pearl White", value: "#f0ead6" },
+    { name: "Onyx Black", value: "#353535" },
+  ],
+  arrangements: [
+    { id: "alternating", label: "Alternating" },
+    { id: "gradient", label: "Gradient" },
+    { id: "clustered", label: "Clustered" },
+    { id: "random", label: "Random" },
+  ],
+  charmPlacements: [
+    { id: "center", label: "Center" },
+    { id: "ends", label: "Ends" },
+    { id: "scattered", label: "Scattered" },
+  ],
+  charms: [
+    { id: "heart", label: "Heart" },
+    { id: "star", label: "Star" },
+    { id: "moon", label: "Moon" },
+    { id: "flower", label: "Flower" },
+    { id: "initial", label: "Initial" },
+  ],
+};
+
+const defaultCustomizationState = {
+  category: "bracelet",
+  beadColors: ["#f2b7ed", "#ffbf00", "#4682b4"],
+  arrangement: "alternating",
+  charmPlacement: "center",
+  charms: ["heart"],
+  beadCount: 18,
+  prompt: "",
+  previewUrl: "",
+  previewLabel: "",
+  isGenerating: false,
+};
+
+let customizationState = createCustomizationState();
+let customizationPreviewTimer = null;
+let customizationPreviewToken = 0;
 
 function getStoredTheme() {
   try {
@@ -1172,8 +1228,12 @@ const dataHandler = {
   onDataChanged(data) {
     wishlistItems.clear();
     cartItems.clear();
+    customOrderStore.clear();
 
     data.forEach((record) => {
+      if (record.item_type === "Custom") {
+        ensureCustomOrderFromRecord(record);
+      }
       if (record.action_type === "wishlist") {
         const key = buildItemKey(record.item_id, record.variant);
         wishlistItems.set(key, {
@@ -1687,7 +1747,9 @@ function getWishlistEntries() {
     .filter((item) => item && typeof item === "object")
     .map((item) => ({
       ...item,
-      product: allProducts.find((p) => p.id === item.productId),
+      product:
+        allProducts.find((p) => p.id === item.productId) ||
+        customOrderStore.get(item.productId),
     }))
     .filter((item) => item.product);
 }
@@ -1697,9 +1759,911 @@ function getCartEntries() {
     .filter((item) => item && typeof item === "object")
     .map((item) => ({
       ...item,
-      product: allProducts.find((p) => p.id === item.productId),
+      product:
+        allProducts.find((p) => p.id === item.productId) ||
+        customOrderStore.get(item.productId),
     }))
     .filter((item) => item.product);
+}
+
+function createCustomizationState() {
+  return {
+    ...defaultCustomizationState,
+    beadColors: [...defaultCustomizationState.beadColors],
+    charms: [...defaultCustomizationState.charms],
+    previewUrl: defaultCustomizationState.previewUrl || "",
+    previewLabel: defaultCustomizationState.previewLabel || "",
+    isGenerating: false,
+  };
+}
+
+function clampNumber(value, min, max) {
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, num));
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || "");
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(0, Math.max(0, maxLength - 3)).trim() + "...";
+}
+
+function getCustomizationCategory(categoryId) {
+  return customizationOptions.categories.find(
+    (category) => category.id === categoryId
+  );
+}
+
+function getCustomizationOptionLabel(options, id) {
+  const match = options.find((option) => option.id === id);
+  return match ? match.label : formatVariantLabel(id);
+}
+
+function getCustomizationColorName(hex) {
+  const match = customizationOptions.beadColors.find(
+    (color) => color.value.toLowerCase() === String(hex).toLowerCase()
+  );
+  return match ? match.name : String(hex);
+}
+
+function getCustomizationCharmLabel(charmId) {
+  const match = customizationOptions.charms.find(
+    (charm) => charm.id === charmId
+  );
+  return match ? match.label : formatVariantLabel(charmId);
+}
+
+function getCustomizationInitial(prompt) {
+  const clean = String(prompt || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .trim();
+  if (!clean) {
+    return "A";
+  }
+  return clean.charAt(0).toUpperCase();
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return hash >>> 0;
+}
+
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t += 0x6d2b79f5;
+    let result = t;
+    result = Math.imul(result ^ (result >>> 15), result | 1);
+    result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+    return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex || "").replace("#", "");
+  if (!clean) {
+    return { r: 0, g: 0, b: 0 };
+  }
+  const value =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : clean.padStart(6, "0");
+  const intValue = parseInt(value, 16);
+  return {
+    r: (intValue >> 16) & 255,
+    g: (intValue >> 8) & 255,
+    b: intValue & 255,
+  };
+}
+
+function rgbToHex(r, g, b) {
+  const toHex = (value) =>
+    Math.max(0, Math.min(255, Math.round(value)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixColors(colorA, colorB, t) {
+  const clamped = Math.max(0, Math.min(1, t));
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  return rgbToHex(
+    a.r + (b.r - a.r) * clamped,
+    a.g + (b.g - a.g) * clamped,
+    a.b + (b.b - a.b) * clamped
+  );
+}
+
+function buildBeadColorSequence(arrangement, palette, count, seed) {
+  const colors =
+    Array.isArray(palette) && palette.length
+      ? palette
+      : [...defaultCustomizationState.beadColors];
+  const total = Math.max(1, count);
+  const sequence = [];
+  const random = mulberry32(seed || 1);
+
+  if (arrangement === "random") {
+    for (let i = 0; i < total; i += 1) {
+      const index = Math.floor(random() * colors.length);
+      sequence.push(colors[index]);
+    }
+    return sequence;
+  }
+
+  if (arrangement === "clustered") {
+    const clusterSize = Math.ceil(total / colors.length);
+    colors.forEach((color) => {
+      for (let i = 0; i < clusterSize && sequence.length < total; i += 1) {
+        sequence.push(color);
+      }
+    });
+    return sequence;
+  }
+
+  if (arrangement === "gradient") {
+    if (colors.length === 1) {
+      return Array.from({ length: total }, () => colors[0]);
+    }
+    const segments = colors.length - 1;
+    for (let i = 0; i < total; i += 1) {
+      const ratio = total === 1 ? 0 : i / (total - 1);
+      const segment = Math.min(segments - 1, Math.floor(ratio * segments));
+      const localT = (ratio - segment / segments) * segments;
+      sequence.push(mixColors(colors[segment], colors[segment + 1], localT));
+    }
+    return sequence;
+  }
+
+  for (let i = 0; i < total; i += 1) {
+    sequence.push(colors[i % colors.length]);
+  }
+  return sequence;
+}
+
+function buildBeadLayout(categoryId, beadCount) {
+  const width = 640;
+  const height = 420;
+  const count = Math.max(6, beadCount);
+  const category = getCustomizationCategory(categoryId) || {};
+  const layoutType = category.layout || "circle";
+  const beads = [];
+  let center = { x: width / 2, y: height / 2 };
+  let stringSvg = "";
+
+  if (layoutType === "line") {
+    const x = width / 2;
+    const startY = 80;
+    const endY = height - 80;
+    const spacing = (endY - startY) / (count - 1);
+    const beadRadius = clampNumber(220 / count, 6, 14);
+
+    for (let i = 0; i < count; i += 1) {
+      beads.push({ x, y: startY + spacing * i, r: beadRadius });
+    }
+
+    stringSvg = `
+      <line x1="${x}" y1="${startY}" x2="${x}" y2="${endY}" stroke="rgba(0,0,0,0.12)" stroke-width="4" />
+      <circle cx="${x}" cy="${startY - 26}" r="18" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="4" />
+      <circle cx="${x}" cy="${startY - 26}" r="10" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="2" />
+    `;
+    center = { x, y: height / 2 };
+  } else if (layoutType === "arc") {
+    const radius = 200;
+    center = { x: width / 2, y: height / 2 + 50 };
+    const startAngle = Math.PI * 1.15;
+    const endAngle = Math.PI * -0.15;
+    const beadRadius = clampNumber(200 / count, 6, 13);
+
+    for (let i = 0; i < count; i += 1) {
+      const t = count === 1 ? 0.5 : i / (count - 1);
+      const angle = startAngle + (endAngle - startAngle) * t;
+      beads.push({
+        x: center.x + radius * Math.cos(angle),
+        y: center.y + radius * Math.sin(angle),
+        r: beadRadius,
+      });
+    }
+
+    const startX = center.x + radius * Math.cos(startAngle);
+    const startY = center.y + radius * Math.sin(startAngle);
+    const endX = center.x + radius * Math.cos(endAngle);
+    const endY = center.y + radius * Math.sin(endAngle);
+
+    stringSvg = `
+      <path d="M ${startX} ${startY} A ${radius} ${radius} 0 0 1 ${endX} ${endY}" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="4" />
+    `;
+  } else {
+    const radius = 140;
+    center = { x: width / 2, y: height / 2 };
+    const beadRadius = clampNumber(220 / count, 6, 14);
+
+    for (let i = 0; i < count; i += 1) {
+      const angle = (Math.PI * 2 * i) / count - Math.PI / 2;
+      beads.push({
+        x: center.x + radius * Math.cos(angle),
+        y: center.y + radius * Math.sin(angle),
+        r: beadRadius,
+      });
+    }
+
+    stringSvg = `
+      <circle cx="${center.x}" cy="${center.y}" r="${radius}" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="4" />
+    `;
+  }
+
+  return {
+    width,
+    height,
+    beads,
+    center,
+    layoutType,
+    stringSvg,
+  };
+}
+
+function getCharmPositions(layout, placement) {
+  const count = layout.beads.length;
+  if (count === 0) {
+    return [];
+  }
+
+  let indices = [];
+  if (placement === "ends") {
+    indices = [0, count - 1];
+  } else if (placement === "scattered") {
+    indices = [
+      Math.floor(count * 0.2),
+      Math.floor(count * 0.5),
+      Math.floor(count * 0.8),
+    ];
+  } else {
+    indices = [Math.floor(count / 2)];
+  }
+
+  return indices
+    .map((index) => layout.beads[Math.min(Math.max(index, 0), count - 1)])
+    .map((bead) => {
+      let direction = { x: 0, y: 1 };
+      if (layout.layoutType !== "line") {
+        const dx = bead.x - layout.center.x;
+        const dy = bead.y - layout.center.y;
+        const length = Math.sqrt(dx * dx + dy * dy) || 1;
+        direction = { x: dx / length, y: dy / length };
+      }
+      return {
+        x: bead.x + direction.x * 20,
+        y: bead.y + direction.y * 20,
+        size: 20,
+      };
+    });
+}
+
+function renderCharmSvg(charmId, x, y, size, color, initialChar) {
+  const scale = size / 24;
+  const transform = `translate(${x} ${y}) scale(${scale}) translate(-12 -12)`;
+  let shape = "";
+
+  if (charmId === "heart") {
+    shape =
+      '<path d="M12 20s-5.6-3.9-8.2-7.6C1.4 8.2 3.6 5 6.6 5c1.8 0 3.4 1.1 4 2.4C11.2 6.1 12.8 5 14.6 5c3 0 5.2 3.2 2.8 7.4-2.6 3.7-8.2 7.6-8.2 7.6z"></path>';
+  } else if (charmId === "star") {
+    shape =
+      '<polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,16.8 5.5,21 7.5,14 2,9 9,9"></polygon>';
+  } else if (charmId === "moon") {
+    shape =
+      '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 1 0 10.5 10.5z"></path>';
+  } else if (charmId === "flower") {
+    shape =
+      '<circle cx="12" cy="6" r="3"></circle><circle cx="12" cy="18" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="12" r="3"></circle><circle cx="12" cy="12" r="4"></circle>';
+  } else {
+    const letter = initialChar || "A";
+    shape = `<circle cx="12" cy="12" r="9"></circle><text x="12" y="16" text-anchor="middle" font-size="10" font-family="Playfair Display, serif" fill="#ffffff">${letter}</text>`;
+  }
+
+  return `<g transform="${transform}" fill="${color}" stroke="rgba(0,0,0,0.2)" stroke-width="0.8">${shape}</g>`;
+}
+
+function renderCharmIcon(charmId, color) {
+  const tint = color || config.text_color;
+  let shape = "";
+
+  if (charmId === "heart") {
+    shape =
+      '<path d="M12 20s-5.6-3.9-8.2-7.6C1.4 8.2 3.6 5 6.6 5c1.8 0 3.4 1.1 4 2.4C11.2 6.1 12.8 5 14.6 5c3 0 5.2 3.2 2.8 7.4-2.6 3.7-8.2 7.6-8.2 7.6z"></path>';
+  } else if (charmId === "star") {
+    shape =
+      '<polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,16.8 5.5,21 7.5,14 2,9 9,9"></polygon>';
+  } else if (charmId === "moon") {
+    shape =
+      '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 1 0 10.5 10.5z"></path>';
+  } else if (charmId === "flower") {
+    shape =
+      '<circle cx="12" cy="6" r="3"></circle><circle cx="12" cy="18" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="12" r="3"></circle><circle cx="12" cy="12" r="4"></circle>';
+  } else {
+    shape =
+      '<circle cx="12" cy="12" r="9"></circle><text x="12" y="16" text-anchor="middle" font-size="10" font-family="Playfair Display, serif" fill="#ffffff">A</text>';
+  }
+
+  return `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="${tint}" stroke="rgba(0,0,0,0.2)" stroke-width="0.8">${shape}</svg>`;
+}
+
+function getPromptMood(prompt) {
+  const mood = {
+    bgStart: "#f9f4ec",
+    bgEnd: "#f1ece5",
+    metal: "#d4af37",
+    glow: "#ffffff",
+  };
+  const text = normalizeText(prompt);
+  if (!text) {
+    return mood;
+  }
+
+  if (text.includes("silver")) {
+    mood.metal = "#b6bcc6";
+  }
+  if (text.includes("rose")) {
+    mood.metal = "#d7a3a3";
+  }
+  if (text.includes("pastel")) {
+    mood.bgStart = "#fff7fb";
+    mood.bgEnd = "#f1f6ff";
+  }
+  if (text.includes("bold") || text.includes("dramatic")) {
+    mood.bgStart = "#2a1f1a";
+    mood.bgEnd = "#1b1410";
+  }
+  if (text.includes("ocean") || text.includes("sea")) {
+    mood.bgStart = "#d9f2ff";
+    mood.bgEnd = "#b6d7f5";
+    mood.metal = "#3e7fb1";
+  }
+  if (text.includes("sunset")) {
+    mood.bgStart = "#ffe2cf";
+    mood.bgEnd = "#ffcba4";
+    mood.metal = "#c97a3b";
+  }
+  if (text.includes("minimal")) {
+    mood.bgStart = "#f7f5f0";
+    mood.bgEnd = "#ece7df";
+  }
+  if (text.includes("night")) {
+    mood.bgStart = "#1e1b22";
+    mood.bgEnd = "#2b2630";
+    mood.metal = "#b9985a";
+  }
+
+  return mood;
+}
+
+function buildCustomizationPreview(state) {
+  const beadCount = clampNumber(state.beadCount, 10, 32);
+  const palette =
+    state.beadColors && state.beadColors.length
+      ? state.beadColors
+      : [...defaultCustomizationState.beadColors];
+  const charms =
+    state.charms && state.charms.length
+      ? state.charms
+      : [...defaultCustomizationState.charms];
+  const seed = hashString(
+    [
+      state.category,
+      beadCount,
+      state.arrangement,
+      palette.join("|"),
+      state.charmPlacement,
+      charms.join("|"),
+      state.prompt || "",
+    ].join("::")
+  );
+  const beadColors = buildBeadColorSequence(
+    state.arrangement,
+    palette,
+    beadCount,
+    seed
+  );
+  const layout = buildBeadLayout(state.category, beadCount);
+  const mood = getPromptMood(state.prompt);
+  const initialChar = getCustomizationInitial(state.prompt);
+  const charmPositions = getCharmPositions(layout, state.charmPlacement);
+
+  const beadSvg = layout.beads
+    .map((bead, index) => {
+      const fill = beadColors[index % beadColors.length];
+      const highlightX = bead.x - bead.r * 0.35;
+      const highlightY = bead.y - bead.r * 0.35;
+      return `
+        <circle cx="${bead.x}" cy="${bead.y}" r="${bead.r}" fill="${fill}" stroke="rgba(0,0,0,0.18)" stroke-width="1"></circle>
+        <circle cx="${highlightX}" cy="${highlightY}" r="${bead.r * 0.35}" fill="rgba(255,255,255,0.45)"></circle>
+      `;
+    })
+    .join("");
+
+  const charmSvg = charmPositions
+    .map((pos, index) =>
+      renderCharmSvg(
+        charms[index % charms.length],
+        pos.x,
+        pos.y,
+        pos.size,
+        mood.metal,
+        initialChar
+      )
+    )
+    .join("");
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${mood.bgStart}"></stop>
+          <stop offset="100%" stop-color="${mood.bgEnd}"></stop>
+        </linearGradient>
+        <radialGradient id="glow" cx="0.3" cy="0.2" r="0.8">
+          <stop offset="0%" stop-color="${mood.glow}" stop-opacity="0.35"></stop>
+          <stop offset="100%" stop-color="${mood.glow}" stop-opacity="0"></stop>
+        </radialGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="rgba(0,0,0,0.25)"></feDropShadow>
+        </filter>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#bg)"></rect>
+      <rect width="100%" height="100%" fill="url(#glow)"></rect>
+      <g filter="url(#shadow)">
+        ${layout.stringSvg}
+        ${beadSvg}
+      </g>
+      ${charmSvg}
+    </svg>
+  `;
+
+  const categoryLabel = getCustomizationOptionLabel(
+    customizationOptions.categories,
+    state.category
+  );
+  const label = `${categoryLabel} preview with ${beadCount} beads`;
+
+  return {
+    dataUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+    label,
+  };
+}
+
+function buildCustomizationMetaForStorage(state) {
+  return {
+    category: state.category,
+    beadColors:
+      state.beadColors && state.beadColors.length
+        ? state.beadColors
+        : [...defaultCustomizationState.beadColors],
+    arrangement: state.arrangement,
+    charmPlacement: state.charmPlacement,
+    charms:
+      state.charms && state.charms.length
+        ? state.charms
+        : [...defaultCustomizationState.charms],
+    beadCount: clampNumber(state.beadCount, 10, 32),
+    prompt: state.prompt || "",
+  };
+}
+
+function buildCustomizationSummaryParts(state) {
+  const meta = buildCustomizationMetaForStorage(state);
+  const categoryLabel = getCustomizationOptionLabel(
+    customizationOptions.categories,
+    meta.category
+  );
+  const arrangementLabel = getCustomizationOptionLabel(
+    customizationOptions.arrangements,
+    meta.arrangement
+  );
+  const placementLabel = getCustomizationOptionLabel(
+    customizationOptions.charmPlacements,
+    meta.charmPlacement
+  );
+  const colorLabel = meta.beadColors
+    .map((color) => getCustomizationColorName(color))
+    .join(", ");
+  const charmLabel = meta.charms
+    .map((charm) => getCustomizationCharmLabel(charm))
+    .join(", ");
+
+  return {
+    category: categoryLabel,
+    beads: `${meta.beadCount} beads`,
+    colors: colorLabel || "Custom mix",
+    pattern: arrangementLabel,
+    charms: charmLabel
+      ? `${charmLabel} (${placementLabel})`
+      : `None (${placementLabel})`,
+    prompt: meta.prompt ? truncateText(meta.prompt, 60) : "No prompt",
+  };
+}
+
+function calculateCustomizationPrice(meta) {
+  const category = getCustomizationCategory(meta.category);
+  const basePrice = category ? category.basePrice : 260;
+  const beadCount = clampNumber(meta.beadCount, 10, 32);
+  const beadCost = Math.max(0, beadCount - 10) * 4;
+  const charmCost = (meta.charms ? meta.charms.length : 0) * 25;
+  const promptCost = meta.prompt ? 15 : 0;
+  return Math.round(basePrice + beadCost + charmCost + promptCost);
+}
+
+function buildCustomOrderVariant(meta, promptText) {
+  const summary = buildCustomizationSummaryParts({
+    category: meta.category,
+    beadColors: meta.beadColors,
+    arrangement: meta.arrangement,
+    charmPlacement: meta.charmPlacement,
+    charms: meta.charms,
+    beadCount: meta.beadCount,
+    prompt: promptText !== undefined ? promptText : meta.prompt,
+  });
+  return {
+    category: summary.category,
+    beads: summary.beads,
+    colors: summary.colors,
+    pattern: summary.pattern,
+    charms: summary.charms,
+    prompt: summary.prompt,
+  };
+}
+
+function updateCustomizationPreviewDom() {
+  const status = document.getElementById("customization-preview-status");
+  if (status) {
+    status.textContent = customizationState.isGenerating
+      ? "Generating preview..."
+      : "Preview ready";
+  }
+
+  const previewImage = document.getElementById("customization-preview-image");
+  const previewPlaceholder = document.getElementById(
+    "customization-preview-placeholder"
+  );
+  if (previewImage && customizationState.previewUrl) {
+    previewImage.src = customizationState.previewUrl;
+    previewImage.style.display = "block";
+    previewImage.alt = customizationState.previewLabel || "AI preview";
+  }
+  if (previewPlaceholder) {
+    previewPlaceholder.style.display = customizationState.previewUrl
+      ? "none"
+      : "flex";
+  }
+
+  const label = document.getElementById("customization-preview-label");
+  if (label) {
+    label.textContent =
+      customizationState.previewLabel ||
+      "Your piece updates as you change options.";
+  }
+}
+
+function refreshCustomizationSummaryDom() {
+  const summary = buildCustomizationSummaryParts(customizationState);
+  const meta = buildCustomizationMetaForStorage(customizationState);
+  const price = calculateCustomizationPrice(meta);
+
+  const updateText = (id, value) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.textContent = value;
+    }
+  };
+
+  updateText("customization-summary-category", summary.category);
+  updateText("customization-summary-beads", summary.beads);
+  updateText("customization-summary-colors", summary.colors);
+  updateText("customization-summary-pattern", summary.pattern);
+  updateText("customization-summary-charms", summary.charms);
+  updateText("customization-summary-prompt", summary.prompt);
+  updateText("customization-price", `₹${price}`);
+}
+
+function scheduleCustomizationPreview(options = {}) {
+  const { render = true } = options;
+  customizationPreviewToken += 1;
+  const token = customizationPreviewToken;
+  customizationState.isGenerating = true;
+
+  if (render) {
+    updateUI();
+  } else {
+    updateCustomizationPreviewDom();
+  }
+
+  if (customizationPreviewTimer) {
+    clearTimeout(customizationPreviewTimer);
+  }
+
+  customizationPreviewTimer = setTimeout(() => {
+    if (token !== customizationPreviewToken) {
+      return;
+    }
+    const preview = buildCustomizationPreview(customizationState);
+    customizationState.previewUrl = preview.dataUrl;
+    customizationState.previewLabel = preview.label;
+    customizationState.isGenerating = false;
+
+    if (render) {
+      updateUI();
+    } else {
+      updateCustomizationPreviewDom();
+    }
+  }, 250);
+}
+
+function handleCustomizationPromptInput(value) {
+  customizationState.prompt = value;
+  refreshCustomizationSummaryDom();
+  scheduleCustomizationPreview({ render: false });
+}
+
+function handleCustomizationBeadCountInput(value) {
+  customizationState.beadCount = clampNumber(value, 10, 32);
+  const beadCountLabel = document.getElementById("customization-bead-count");
+  if (beadCountLabel) {
+    beadCountLabel.textContent = customizationState.beadCount;
+  }
+  refreshCustomizationSummaryDom();
+  scheduleCustomizationPreview({ render: false });
+}
+
+function setCustomizationCategory(value) {
+  if (customizationState.category === value) {
+    return;
+  }
+  customizationState.category = value;
+  scheduleCustomizationPreview({ render: true });
+}
+
+function setCustomizationArrangement(value) {
+  if (customizationState.arrangement === value) {
+    return;
+  }
+  customizationState.arrangement = value;
+  scheduleCustomizationPreview({ render: true });
+}
+
+function setCustomizationCharmPlacement(value) {
+  if (customizationState.charmPlacement === value) {
+    return;
+  }
+  customizationState.charmPlacement = value;
+  scheduleCustomizationPreview({ render: true });
+}
+
+function toggleCustomizationColor(value) {
+  const current = new Set(customizationState.beadColors);
+  if (current.has(value)) {
+    if (current.size === 1) {
+      showNotification("Select at least one color", "error");
+      return;
+    }
+    current.delete(value);
+  } else if (current.size >= 4) {
+    showNotification("Select up to 4 colors", "error");
+    return;
+  } else {
+    current.add(value);
+  }
+  customizationState.beadColors = Array.from(current);
+  scheduleCustomizationPreview({ render: true });
+}
+
+function toggleCustomizationCharm(value) {
+  const current = new Set(customizationState.charms);
+  if (current.has(value)) {
+    if (current.size === 1) {
+      showNotification("Select at least one charm", "error");
+      return;
+    }
+    current.delete(value);
+  } else if (current.size >= 3) {
+    showNotification("Select up to 3 charms", "error");
+    return;
+  } else {
+    current.add(value);
+  }
+  customizationState.charms = Array.from(current);
+  scheduleCustomizationPreview({ render: true });
+}
+
+function resetCustomization() {
+  const previewUrl = customizationState.previewUrl;
+  const previewLabel = customizationState.previewLabel;
+  customizationState = createCustomizationState();
+  customizationState.previewUrl = previewUrl;
+  customizationState.previewLabel = previewLabel;
+  scheduleCustomizationPreview({ render: true });
+}
+
+async function addCustomOrderToCart() {
+  const meta = buildCustomizationMetaForStorage(customizationState);
+  if (!meta.beadColors.length) {
+    showNotification("Select at least one bead color", "error");
+    return;
+  }
+  if (!meta.charms.length) {
+    showNotification("Select at least one charm", "error");
+    return;
+  }
+
+  const productId = `${CUSTOM_ORDER_PREFIX}-${Date.now()}`;
+  const preview = buildCustomizationPreview(customizationState);
+  const categoryLabel = getCustomizationOptionLabel(
+    customizationOptions.categories,
+    meta.category
+  );
+  const displayVariant = buildCustomOrderVariant(meta, meta.prompt);
+  const variant = {
+    ...displayVariant,
+    custom_meta: JSON.stringify(meta),
+  };
+
+  const product = {
+    id: productId,
+    name: `Custom ${categoryLabel}`,
+    price: calculateCustomizationPrice(meta),
+    category: "Custom",
+    theme: "Custom",
+    sale: false,
+    inStock: true,
+    isNew: true,
+    images: [preview.dataUrl],
+    description: "Custom order with AI preview",
+    hasVariants: true,
+    multiVariantTypes: true,
+    variantGroups: [
+      { variantType: "category" },
+      { variantType: "beads" },
+      { variantType: "colors" },
+      { variantType: "pattern" },
+      { variantType: "charms" },
+      { variantType: "prompt" },
+    ],
+  };
+
+  customOrderStore.set(productId, product);
+
+  const itemKey = buildItemKey(productId, variant);
+  const existing = cartItems.get(itemKey);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cartItems.set(itemKey, {
+      key: itemKey,
+      productId,
+      variant: cloneVariant(variant),
+      quantity: 1,
+    });
+  }
+
+  const itemData = {
+    item_id: productId,
+    item_type: "Custom",
+    action_type: "cart",
+    variant: cloneVariant(variant),
+    timestamp: Date.now(),
+  };
+
+  if (window.dataSdk) {
+    try {
+      const result = await window.dataSdk.create(itemData);
+      if (result.isOk) {
+        showNotification("Custom order added to cart", "success");
+      } else {
+        cartItems.delete(itemKey);
+        customOrderStore.delete(productId);
+        showNotification("Failed to add custom order", "error");
+        return;
+      }
+    } catch (error) {
+      showNotification("Custom order added to cart", "success");
+    }
+  } else {
+    showNotification("Custom order added to cart", "success");
+  }
+
+  updateUI();
+}
+
+function ensureCustomOrderFromRecord(record) {
+  if (!record || record.item_type !== "Custom") {
+    return;
+  }
+  if (customOrderStore.has(record.item_id)) {
+    return;
+  }
+  if (!record.variant || !record.variant.custom_meta) {
+    return;
+  }
+
+  let meta = null;
+  try {
+    meta = JSON.parse(record.variant.custom_meta);
+  } catch (error) {
+    meta = null;
+  }
+
+  if (!meta) {
+    return;
+  }
+
+  const previewState = {
+    ...createCustomizationState(),
+    category: meta.category || defaultCustomizationState.category,
+    beadColors: Array.isArray(meta.beadColors)
+      ? meta.beadColors
+      : [...defaultCustomizationState.beadColors],
+    arrangement: meta.arrangement || defaultCustomizationState.arrangement,
+    charmPlacement:
+      meta.charmPlacement || defaultCustomizationState.charmPlacement,
+    charms: Array.isArray(meta.charms)
+      ? meta.charms
+      : [...defaultCustomizationState.charms],
+    beadCount: clampNumber(meta.beadCount, 10, 32),
+    prompt: meta.prompt || "",
+  };
+  const preview = buildCustomizationPreview(previewState);
+  const categoryLabel = getCustomizationOptionLabel(
+    customizationOptions.categories,
+    previewState.category
+  );
+
+  customOrderStore.set(record.item_id, {
+    id: record.item_id,
+    name: `Custom ${categoryLabel}`,
+    price: calculateCustomizationPrice(meta),
+    category: "Custom",
+    theme: "Custom",
+    sale: false,
+    inStock: true,
+    isNew: true,
+    images: [preview.dataUrl],
+    description: "Custom order with AI preview",
+    hasVariants: true,
+    multiVariantTypes: true,
+    variantGroups: [
+      { variantType: "category" },
+      { variantType: "beads" },
+      { variantType: "colors" },
+      { variantType: "pattern" },
+      { variantType: "charms" },
+      { variantType: "prompt" },
+    ],
+  });
+}
+
+function initializeCustomizationPreview() {
+  if (!customizationState.previewUrl) {
+    const preview = buildCustomizationPreview(customizationState);
+    customizationState.previewUrl = preview.dataUrl;
+    customizationState.previewLabel = preview.label;
+  }
 }
 
 function sortAndFilterProducts(productsList, category) {
@@ -2404,6 +3368,333 @@ function renderProductCard(product) {
       `;
 }
 
+function renderCustomizationSection() {
+  const summary = buildCustomizationSummaryParts(customizationState);
+  const meta = buildCustomizationMetaForStorage(customizationState);
+  const price = calculateCustomizationPrice(meta);
+  const previewLabel =
+    customizationState.previewLabel ||
+    "Your piece updates as you change options.";
+  const hasPreview = Boolean(customizationState.previewUrl);
+  const promptValue = escapeHtml(customizationState.prompt || "");
+  const promptSummary = escapeHtml(summary.prompt || "");
+
+  return `
+        <section id="customize" class="py-24" style="background: linear-gradient(135deg, ${config.surface_color
+    } 0%, ${config.background_color
+    } 100%); border-top: 1px solid rgba(212, 175, 55, 0.12); border-bottom: 1px solid rgba(212, 175, 55, 0.12);">
+          <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+              <h2 class="font-heading mb-4" style="font-size: ${config.font_size * 2.5
+    }px; color: ${config.text_color
+    }; font-weight: 300; letter-spacing: 3px;">
+                AI Customization Preview
+              </h2>
+              <p style="font-size: ${config.font_size}px; color: ${config.text_color
+    }; opacity: 0.7; max-width: 720px; margin: 0 auto;">
+                Design your piece with beads, charms, and pattern choices. See an AI preview before you place your order.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              <div class="space-y-6">
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <h3 class="font-heading mb-4" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                    1. Choose a category
+                  </h3>
+                  <div class="flex flex-wrap gap-3">
+                    ${customizationOptions.categories
+      .map((category) => {
+        const isActive = customizationState.category === category.id;
+        return `
+                        <button onclick="setCustomizationCategory('${category.id}')" class="px-4 py-2 transition-opacity hover:opacity-80" style="border: 1px solid ${isActive ? config.primary_action_color : "rgba(212, 175, 55, 0.25)"}; background: ${isActive ? config.primary_action_color : "transparent"}; color: ${isActive ? config.background_color : config.text_color}; font-size: ${config.font_size * 0.85}px; border-radius: 9999px; letter-spacing: 1px;">
+                          ${category.label}
+                        </button>
+                      `;
+      })
+      .join("")}
+                  </div>
+                </div>
+
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-heading" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                      2. Bead colors
+                    </h3>
+                    <span style="font-size: ${config.font_size * 0.8}px; color: ${config.text_color
+    }; opacity: 0.6;">
+                      ${customizationState.beadColors.length} selected
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap gap-3">
+                    ${customizationOptions.beadColors
+      .map((color) => {
+        const isSelected = customizationState.beadColors.includes(
+          color.value
+        );
+        return `
+                        <button onclick="toggleCustomizationColor('${color.value}')" class="flex items-center gap-3 px-3 py-2 transition-opacity hover:opacity-80" style="border: 1px solid ${isSelected ? config.primary_action_color : "rgba(212, 175, 55, 0.25)"}; background: ${isSelected ? config.primary_action_color + "20" : "transparent"}; border-radius: 9999px;">
+                          <span style="width: 16px; height: 16px; border-radius: 9999px; background: ${color.value}; border: 1px solid rgba(0, 0, 0, 0.1);"></span>
+                          <span style="font-size: ${config.font_size * 0.8}px; color: ${config.text_color};">${color.name}</span>
+                        </button>
+                      `;
+      })
+      .join("")}
+                  </div>
+                  <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
+    }; opacity: 0.5; margin-top: 12px;">
+                    Select up to 4 colors to blend into your design.
+                  </p>
+                </div>
+
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <h3 class="font-heading mb-4" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                    3. Pattern and alignment
+                  </h3>
+                  <div class="flex flex-wrap gap-3">
+                    ${customizationOptions.arrangements
+      .map((arrangement) => {
+        const isActive =
+          customizationState.arrangement === arrangement.id;
+        return `
+                        <button onclick="setCustomizationArrangement('${arrangement.id}')" class="px-4 py-2 transition-opacity hover:opacity-80" style="border: 1px solid ${isActive ? config.primary_action_color : "rgba(212, 175, 55, 0.25)"}; background: ${isActive ? config.primary_action_color : "transparent"}; color: ${isActive ? config.background_color : config.text_color}; font-size: ${config.font_size * 0.85}px; border-radius: 9999px; letter-spacing: 1px;">
+                          ${arrangement.label}
+                        </button>
+                      `;
+      })
+      .join("")}
+                  </div>
+                </div>
+
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <h3 class="font-heading mb-4" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                    4. Charms
+                  </h3>
+                  <div class="flex flex-wrap gap-3">
+                    ${customizationOptions.charms
+      .map((charm) => {
+        const isActive = customizationState.charms.includes(
+          charm.id
+        );
+        const tint = isActive
+          ? config.background_color
+          : config.text_color;
+        return `
+                        <button onclick="toggleCustomizationCharm('${charm.id}')" class="flex items-center gap-2 px-3 py-2 transition-opacity hover:opacity-80" style="border: 1px solid ${isActive ? config.primary_action_color : "rgba(212, 175, 55, 0.25)"}; background: ${isActive ? config.primary_action_color : "transparent"}; color: ${isActive ? config.background_color : config.text_color}; font-size: ${config.font_size * 0.8}px; border-radius: 9999px; letter-spacing: 1px;">
+                          ${renderCharmIcon(charm.id, tint)}
+                          <span>${charm.label}</span>
+                        </button>
+                      `;
+      })
+      .join("")}
+                  </div>
+                  <div class="mt-4">
+                    <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
+    }; opacity: 0.6; margin-bottom: 8px;">
+                      Charm placement
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                      ${customizationOptions.charmPlacements
+      .map((placement) => {
+        const isActive =
+          customizationState.charmPlacement === placement.id;
+        return `
+                          <button onclick="setCustomizationCharmPlacement('${placement.id}')" class="px-4 py-2 transition-opacity hover:opacity-80" style="border: 1px solid ${isActive ? config.primary_action_color : "rgba(212, 175, 55, 0.25)"}; background: ${isActive ? config.primary_action_color : "transparent"}; color: ${isActive ? config.background_color : config.text_color}; font-size: ${config.font_size * 0.8}px; border-radius: 9999px; letter-spacing: 1px;">
+                            ${placement.label}
+                          </button>
+                        `;
+      })
+      .join("")}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-heading" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                      5. Bead count
+                    </h3>
+                    <span id="customization-bead-count" style="font-size: ${config.font_size * 0.9
+    }px; color: ${config.primary_action_color}; font-weight: 500;">
+                      ${customizationState.beadCount}
+                    </span>
+                  </div>
+                  <input type="range" min="10" max="32" value="${customizationState.beadCount}" oninput="handleCustomizationBeadCountInput(this.value)" class="w-full" style="accent-color: ${config.primary_action_color};">
+                  <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
+    }; opacity: 0.5; margin-top: 8px;">
+                    Adjust the length to match your style.
+                  </p>
+                </div>
+
+                <div class="p-6 fade-in" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.18); border-radius: 8px;">
+                  <h3 class="font-heading mb-3" style="font-size: ${config.font_size * 1.125
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                    6. Optional prompt
+                  </h3>
+                  <textarea id="customization-prompt-input" rows="3" oninput="handleCustomizationPromptInput(this.value)" class="w-full px-4 py-3" style="background: ${config.surface_color
+    }; border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
+    }; font-size: ${config.font_size * 0.875}px; border-radius: 6px; resize: vertical;">${promptValue}</textarea>
+                  <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
+    }; opacity: 0.5; margin-top: 8px;">
+                    Example: soft pastel, gold accents, minimal.
+                  </p>
+                </div>
+              </div>
+
+              <div class="space-y-6">
+                <div class="p-6 sticky top-24 fade-in" style="background: ${config.surface_color
+    }; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: 12px; box-shadow: 0 24px 50px rgba(0, 0, 0, 0.08);">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-heading" style="font-size: ${config.font_size * 1.25
+    }px; color: ${config.text_color
+    }; font-weight: 400; letter-spacing: 2px;">
+                      AI Preview
+                    </h3>
+                    <span id="customization-preview-status" style="font-size: ${config.font_size * 0.75
+    }px; color: ${config.primary_action_color}; letter-spacing: 1px;">
+                      ${customizationState.isGenerating ? "Generating preview..." : "Preview ready"}
+                    </span>
+                  </div>
+
+                  <div class="relative overflow-hidden" style="background: ${config.background_color
+    }; border: 1px solid rgba(212, 175, 55, 0.1); border-radius: 12px; padding: 12px;">
+                    <img id="customization-preview-image" src="${customizationState.previewUrl}" alt="AI preview" style="width: 100%; height: auto; display: ${hasPreview ? "block" : "none"}; border-radius: 10px;">
+                    <div id="customization-preview-placeholder" class="flex items-center justify-center" style="display: ${hasPreview ? "none" : "flex"}; height: 300px; color: ${config.text_color
+    }; opacity: 0.5; font-size: ${config.font_size * 0.85}px; letter-spacing: 1px;">
+                      Preview will appear here
+                    </div>
+                  </div>
+
+                  <p id="customization-preview-label" style="font-size: ${config.font_size * 0.8
+    }px; color: ${config.text_color
+    }; opacity: 0.6; margin-top: 12px;">
+                    ${escapeHtml(previewLabel)}
+                  </p>
+
+                  <div class="mt-6" style="border-top: 1px solid rgba(212, 175, 55, 0.12); padding-top: 16px;">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Category
+                        </p>
+                        <p id="customization-summary-category" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${summary.category}
+                        </p>
+                      </div>
+                      <div>
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Beads
+                        </p>
+                        <p id="customization-summary-beads" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${summary.beads}
+                        </p>
+                      </div>
+                      <div>
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Colors
+                        </p>
+                        <p id="customization-summary-colors" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${summary.colors}
+                        </p>
+                      </div>
+                      <div>
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Pattern
+                        </p>
+                        <p id="customization-summary-pattern" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${summary.pattern}
+                        </p>
+                      </div>
+                      <div>
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Charms
+                        </p>
+                        <p id="customization-summary-charms" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${summary.charms}
+                        </p>
+                      </div>
+                      <div class="sm:col-span-2">
+                        <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color
+    }; opacity: 0.5; letter-spacing: 1px;">
+                          Prompt
+                        </p>
+                        <p id="customization-summary-prompt" style="font-size: ${config.font_size * 0.85
+    }px; color: ${config.text_color
+    };">
+                          ${promptSummary}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mt-6">
+                    <div class="flex items-center justify-between">
+                      <span style="font-size: ${config.font_size * 0.85}px; color: ${config.text_color
+    }; opacity: 0.7;">
+                        Estimated price
+                      </span>
+                      <span id="customization-price" class="font-heading" style="font-size: ${config.font_size * 1.25
+    }px; color: ${config.primary_action_color}; font-weight: 500;">
+                        ₹${price}
+                      </span>
+                    </div>
+                    <p style="font-size: ${config.font_size * 0.75}px; color: ${config.text_color
+    }; opacity: 0.5; margin-top: 6px;">
+                      Final price confirmed after artisan review.
+                    </p>
+                  </div>
+
+                  <div class="mt-6 flex flex-wrap gap-3">
+                    <button onclick="addCustomOrderToCart()" class="btn-primary px-6 py-3 transition-opacity hover:opacity-80" style="background: ${config.primary_action_color
+    }; color: ${config.background_color
+    }; font-size: ${config.font_size * 0.875}px; font-weight: 400; letter-spacing: 2px;">
+                      Add Custom Order
+                    </button>
+                    <button onclick="resetCustomization()" class="px-6 py-3 transition-opacity hover:opacity-80" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color
+    }; font-size: ${config.font_size * 0.875}px; font-weight: 300; letter-spacing: 1px; border-radius: 4px;">
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      `;
+}
+
 function renderHome() {
   const saleProducts = allProducts.filter((p) => p.sale);
   
@@ -2503,6 +3794,8 @@ function renderHome() {
           `
       : ""
     }
+
+          ${renderCustomizationSection()}
 
           <section id="collections" class="py-24" style="background: ${config.background_color
     };">
@@ -4148,6 +5441,8 @@ window.updateUI = function() {
 
 // Initialize viewport setup
 setupViewport();
+
+initializeCustomizationPreview();
 
 initTheme();
 init();
