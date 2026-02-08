@@ -3706,7 +3706,7 @@ function renderCustomizationSection() {
               </h2>
               <p style="font-size: ${config.font_size}px; color: ${config.text_color
     }; opacity: 0.7; max-width: 720px; margin: 0 auto;">
-                Design your piece with beads, charms, and pattern choices. See an AI preview before you place your order.
+                Design your piece with beads, charms, and pattern choices. See an AI preview before you place your order. AI pictures are for reference only - your final product would look different based on the materials used and the artisan's craftsmanship. For better results use notes and reference images to describe your vision. The more details you provide, the closer the product will match your expectations! This is just a preview of the possibilities - if you have a vision, share it in the notes and our artisans will do their best to bring it to life! Ai might not get everything right, but it's a fun way to explore ideas and get a glimpse of what your custom piece could look like!
               </p>
             </div>
 
@@ -4537,6 +4537,25 @@ function renderCart() {
           const product = item.product;
           const quantity = item.quantity || 0;
           const variantText = getVariantDisplayText(product, item.variant);
+          let customMeta = null;
+          if (item.variant && item.variant.custom_meta) {
+            try {
+              customMeta = JSON.parse(item.variant.custom_meta);
+            } catch (error) {
+              customMeta = null;
+            }
+          }
+          const customSummary = customMeta
+            ? buildCustomizationSummaryParts(customMeta)
+            : null;
+          const referenceImage =
+            customMeta && customMeta.referenceImage
+              ? customMeta.referenceImage
+              : null;
+          const noteText =
+            customMeta && customMeta.customerNote
+              ? customMeta.customerNote
+              : "";
           return `
                       <div class="flex gap-6 p-6 fade-in" style="background: ${config.surface_color
             }; border: 1px solid rgba(212, 175, 55, 0.1);">
@@ -4562,6 +4581,23 @@ function renderCart() {
             }; opacity: 0.6; font-weight: 300; margin-top: 4px;">
                             ${variantText}
                           </p>`
+            : ""
+          }
+                          ${customSummary
+            ? `<div style="margin-top: 10px; font-size: ${config.font_size * 0.75}px; color: ${config.text_color}; opacity: 0.75; line-height: 1.6;">
+                              <div>Category: ${escapeHtml(customSummary.category || "")}</div>
+                              <div>Colors: ${escapeHtml(customSummary.colors || "")}</div>
+                              <div>Pattern: ${escapeHtml(customSummary.pattern || "")}</div>
+                              <div>Charms: ${escapeHtml(customSummary.charms || "")}</div>
+                              <div>Note: ${escapeHtml(noteText || "None")}</div>
+                            </div>`
+            : ""
+          }
+                          ${referenceImage
+            ? `<div style="margin-top: 10px;">
+                              <p style="font-size: ${config.font_size * 0.7}px; color: ${config.text_color}; opacity: 0.6; margin: 0 0 6px;">Reference image</p>
+                              <img src="${referenceImage.dataUrl}" alt="Reference" style="max-width: 140px; height: auto; border-radius: 6px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                            </div>`
             : ""
           }
                           
