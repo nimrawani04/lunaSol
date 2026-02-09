@@ -59,6 +59,15 @@ let searchState = {
   lastSearchType: "",
   searchMessage: "",
 };
+let chatbotOpen = false;
+let chatbotMessages = [];
+let chatbotContext = {
+  outfitDescription: "",
+  outfitImage: null,
+  outfitAverageColor: null,
+  wantsCustomization: false,
+  recentProductIds: [],
+};
 const productColorCache = new Map();
 const CUSTOM_ORDER_PREFIX = "custom-order";
 const customOrderStore = new Map();
@@ -131,6 +140,76 @@ const customizationOptions = {
     value: letter,
     inStock: !new Set(["A","U","X","Y","W", "N","T", "S"]).has(letter),
   })),
+};
+
+const chatbotFaq = [
+  {
+    keywords: ["delivery", "shipping", "ship", "deliver", "dispatch"],
+    answer:
+      "Delivery times depend on your location. After checkout, we confirm the expected delivery window and share updates as your order is prepared and shipped.",
+  },
+  {
+    keywords: ["order", "track", "tracking", "status"],
+    answer:
+      "To check an order, please keep your order confirmation handy. We can help you with status, changes, or questions right after you place the order.",
+  },
+  {
+    keywords: ["custom", "customize", "customisation", "customization"],
+    answer:
+      "Custom pieces are handmade to your preferences. Choose colors, charms, and placement, then add notes or a reference image so the artisan can match your vision.",
+  },
+  {
+    keywords: ["return", "refund", "exchange"],
+    answer:
+      "If something is not right, we will help. Share your order details and we will guide you through the next steps.",
+  },
+  {
+    keywords: ["payment", "pay", "upi", "card", "cash"],
+    answer:
+      "We support multiple payment options at checkout. If you have a preferred method, let us know and we will confirm availability.",
+  },
+];
+
+const chatbotColorKeywords = {
+  pink: "#ff69b4",
+  blush: "#f2b7ed",
+  red: "#e11d48",
+  coral: "#ff7f50",
+  orange: "#f97316",
+  peach: "#f9a8d4",
+  yellow: "#facc15",
+  gold: "#d4af37",
+  green: "#22c55e",
+  mint: "#90ee90",
+  teal: "#14b8a6",
+  blue: "#3b82f6",
+  navy: "#1e3a8a",
+  purple: "#8b5cf6",
+  lavender: "#c7b3ff",
+  white: "#f5f5f5",
+  black: "#111111",
+  brown: "#8b4513",
+  beige: "#f5f5dc",
+  silver: "#c0c0c0",
+};
+
+const HARD_BANNED_COLORS = new Set(["Blush Rose"]);
+
+const chatbotStyleKeywords = {
+  cute: ["cute", "sweet", "girly", "adorable", "kawaii"],
+  minimalist: ["minimal", "minimalist", "simple", "clean", "sleek"],
+  trendy: ["trendy", "fashion", "stylish", "chic"],
+  beachy: ["beach", "coastal", "sea", "ocean", "shell"],
+  fandom: ["anime", "fandom", "kuromi", "disney", "cartoon"],
+  elegant: ["elegant", "classic", "formal", "sophisticated"],
+};
+
+const chatbotCategoryKeywords = {
+  bracelets: ["bracelet", "bangle", "wrist"],
+  necklaces: ["necklace", "neck"],
+  earrings: ["earring", "earrings"],
+  rings: ["ring"],
+  keychains: ["keychain", "key chain", "keys"],
 };
 
 const defaultCustomizationState = {
@@ -1968,6 +2047,911 @@ function hexToRgb(hex) {
   };
 }
 
+function colorDistance(hexA, hexB) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function averageColor(colors) {
+  if (!colors || !colors.length) {
+    return null;
+  }
+  const total = colors.reduce(
+    (acc, hex) => {
+      const rgb = hexToRgb(hex);
+      acc.r += rgb.r;
+      acc.g += rgb.g;
+      acc.b += rgb.b;
+      return acc;
+    },
+    { r: 0, g: 0, b: 0 }
+  );
+  const count = colors.length;
+  const toHex = (value) =>
+    Math.round(value).toString(16).padStart(2, "0");
+  return `#${toHex(total.r / count)}${toHex(total.g / count)}${toHex(
+    total.b / count
+  )}`;
+}
+
+function normalizeChatbotText(text) {
+  return String(text || "").toLowerCase();
+}
+
+function getChatbotFaqResponse(text) {
+  const lower = normalizeChatbotText(text);
+  const match = chatbotFaq.find((entry) =>
+    entry.keywords.some((keyword) => lower.includes(keyword))
+  );
+  return match ? match.answer : "";
+}
+
+function extractColorsFromText(text) {
+  const lower = normalizeChatbotText(text);
+  const colors = [];
+  Object.entries(chatbotColorKeywords).forEach(([name, hex]) => {
+    if (lower.includes(name)) {
+      colors.push(hex);
+    }
+  });
+  customizationOptions.beadColors.forEach((color) => {
+    if (lower.includes(String(color.name || "").toLowerCase())) {
+      colors.push(color.value);
+    }
+  });
+  return colors;
+}
+
+function extractColorNamesFromText(text) {
+  const lower = normalizeChatbotText(text);
+  const names = [];
+  Object.keys(chatbotColorKeywords).forEach((name) => {
+    if (lower.includes(name)) {
+      names.push(name);
+    }
+  });
+  customizationOptions.beadColors.forEach((color) => {
+    const name = String(color.name || "").toLowerCase();
+    if (name && lower.includes(name)) {
+      names.push(color.name);
+    }
+  });
+  return Array.from(new Set(names));
+}
+
+function extractThemesFromText(text) {
+  const lower = normalizeChatbotText(text);
+  const themes = [];
+  Object.entries(chatbotStyleKeywords).forEach(([theme, keywords]) => {
+    if (keywords.some((keyword) => lower.includes(keyword))) {
+      themes.push(theme);
+    }
+  });
+  return themes;
+}
+
+function extractCategoriesFromText(text) {
+  const lower = normalizeChatbotText(text);
+  const categories = [];
+  Object.entries(chatbotCategoryKeywords).forEach(([category, keywords]) => {
+    if (keywords.some((keyword) => lower.includes(keyword))) {
+      categories.push(category);
+    }
+  });
+  return categories;
+}
+
+function resolveColorFromName(name) {
+  const normalized = String(name || "").toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  const keywordMatch = Object.entries(chatbotColorKeywords).find(
+    ([key]) => normalized.includes(key)
+  );
+  if (keywordMatch) {
+    return keywordMatch[1];
+  }
+  const beadMatch = customizationOptions.beadColors.find((color) =>
+    normalized.includes(String(color.name || "").toLowerCase())
+  );
+  return beadMatch ? beadMatch.value : null;
+}
+
+function getProductColorCandidates(product) {
+  const candidates = [];
+  if (!product) {
+    return candidates;
+  }
+  if (product.hasVariants) {
+    if (product.multiVariantTypes && Array.isArray(product.variantGroups)) {
+      product.variantGroups.forEach((group) => {
+        if (group.variantType === "color") {
+          (group.variants || []).forEach((variant) => {
+            if (variant.color) {
+              candidates.push(variant.color);
+            } else {
+              const resolved = resolveColorFromName(variant.value);
+              if (resolved) {
+                candidates.push(resolved);
+              }
+            }
+          });
+        }
+      });
+    } else if (product.variantType === "color") {
+      (product.variants || []).forEach((variant) => {
+        if (variant.color) {
+          candidates.push(variant.color);
+        } else {
+          const resolved = resolveColorFromName(variant.value);
+          if (resolved) {
+            candidates.push(resolved);
+          }
+        }
+      });
+    }
+  }
+  const text = `${product.name || ""} ${product.description || ""}`.toLowerCase();
+  Object.keys(chatbotColorKeywords).forEach((name) => {
+    if (text.includes(name)) {
+      candidates.push(chatbotColorKeywords[name]);
+    }
+  });
+  customizationOptions.beadColors.forEach((color) => {
+    if (text.includes(String(color.name || "").toLowerCase())) {
+      candidates.push(color.value);
+    }
+  });
+  return candidates;
+}
+
+function buildOutfitProfile(text) {
+  const combinedText = `${chatbotContext.outfitDescription || ""} ${text || ""}`;
+  const colorsFromText = extractColorsFromText(combinedText);
+  const colorNames = extractColorNamesFromText(combinedText);
+  const targetColor =
+    (colorsFromText.length ? averageColor(colorsFromText) : null) ||
+    chatbotContext.outfitAverageColor ||
+    null;
+  const themes = extractThemesFromText(combinedText);
+  const categories = extractCategoriesFromText(combinedText);
+  return {
+    targetColor,
+    colorHints: colorsFromText,
+    colorNames,
+    themes,
+    categories,
+    hasSignal:
+      colorsFromText.length > 0 ||
+      themes.length > 0 ||
+      categories.length > 0 ||
+      Boolean(chatbotContext.outfitAverageColor),
+  };
+}
+
+function scoreProductForProfile(product, profile) {
+  let score = 0;
+  const productTheme = String(product.theme || "").toLowerCase();
+  if (profile.themes.some((theme) => productTheme.includes(theme))) {
+    score += 2.5;
+  }
+  const productCategory = String(product.category || "").toLowerCase();
+  if (
+    profile.categories.some((category) =>
+      productCategory.includes(category.replace("s", ""))
+    )
+  ) {
+    score += 1.5;
+  }
+  if (profile.targetColor) {
+    const candidates = getProductColorCandidates(product);
+    if (candidates.length) {
+      const distances = candidates.map((hex) =>
+        colorDistance(profile.targetColor, hex)
+      );
+      const minDistance = Math.min(...distances);
+      const normalized = Math.max(0, 1 - minDistance / 441);
+      score += normalized * 3;
+    }
+  }
+  if (product.isNew) {
+    score += 0.2;
+  }
+  return score;
+}
+
+function recommendProducts(profile, options = {}) {
+  const products = profile.categories.length
+    ? allProducts.filter((product) => {
+        const productCategory = String(product.category || "").toLowerCase();
+        return profile.categories.some((category) =>
+          productCategory.includes(category.replace("s", ""))
+        );
+      })
+    : allProducts;
+
+  const excludeIds = options.excludeIds || [];
+  const scored = products
+    .filter((product) => !excludeIds.includes(product.id))
+    .map((product) => ({
+      product,
+      score: scoreProductForProfile(product, profile),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const targetColors = profile.colorHints.length
+    ? profile.colorHints
+    : profile.targetColor
+    ? [profile.targetColor]
+    : [];
+
+  const colorFiltered = targetColors.length
+    ? scored
+        .map((entry) => {
+          const candidates = getProductColorCandidates(entry.product);
+          if (!candidates.length) {
+            return { ...entry, colorDistance: Infinity };
+          }
+          const minDistance = Math.min(
+            ...candidates.flatMap((hex) =>
+              targetColors.map((target) => colorDistance(target, hex))
+            )
+          );
+          return { ...entry, colorDistance: minDistance };
+        })
+        .filter((entry) => entry.colorDistance < 140)
+        .sort((a, b) => a.colorDistance - b.colorDistance || b.score - a.score)
+    : scored;
+
+  const categoryBuckets = new Map();
+  colorFiltered.forEach((entry) => {
+    const key = String(entry.product.category || "Other");
+    if (!categoryBuckets.has(key)) {
+      categoryBuckets.set(key, []);
+    }
+    categoryBuckets.get(key).push(entry);
+  });
+
+  const categoriesInOrder = [
+    "Bracelets",
+    "Necklaces",
+    "Earrings",
+    "Rings",
+    "Keychains",
+  ].filter((category) => categoryBuckets.has(category));
+  const remaining = Array.from(categoryBuckets.keys())
+    .filter((category) => !categoriesInOrder.includes(category))
+    .sort();
+  categoriesInOrder.push(...remaining);
+
+  const results = [];
+  const maxPerCategory = options.maxPerCategory || 2;
+
+  categoriesInOrder.forEach((category) => {
+    const bucket = categoryBuckets.get(category) || [];
+    const picks = bucket
+      .filter((entry) => entry.score > 0 || !profile.hasSignal)
+      .slice(0, maxPerCategory)
+      .map((entry) => entry.product);
+    picks.forEach((product) => results.push(product));
+  });
+
+  if (!results.length) {
+    const seenCategories = new Set();
+    scored.forEach((entry) => {
+      if (results.length >= 6) {
+        return;
+      }
+      const category = String(entry.product.category || "Other");
+      if (!seenCategories.has(category)) {
+        results.push(entry.product);
+        seenCategories.add(category);
+      }
+    });
+  }
+
+  return results.slice(0, options.limit || 6);
+}
+
+function suggestCustomization(profile) {
+  const target = profile.targetColor || chatbotContext.outfitAverageColor;
+  const availableColors = customizationOptions.beadColors.filter(
+    (color) => color.inStock !== false
+  );
+  const colorChoices = target
+    ? availableColors
+        .map((color) => ({
+          color,
+          distance: colorDistance(target, color.value),
+        }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 3)
+        .map((entry) => entry.color)
+    : availableColors.slice(0, 3);
+
+  const charmOptions = customizationOptions.charms.filter(
+    (charm) => charm.inStock !== false
+  );
+  const theme = profile.themes[0] || "";
+  const charmPool = [];
+  if (theme === "beachy") {
+    charmPool.push("shell", "starfish", "star");
+  } else if (theme === "minimalist") {
+    charmPool.push("pearl", "box", "star");
+  } else if (theme === "cute") {
+    charmPool.push("smiley", "heart", "flower");
+  } else if (theme === "elegant") {
+    charmPool.push("golden pearl", "pearl", "star");
+  } else if (theme === "fandom") {
+    charmPool.push("star", "heart", "moon");
+  } else {
+    charmPool.push("heart", "star", "initial");
+  }
+
+  const charms = charmPool
+    .map((id) => charmOptions.find((charm) => charm.id === id))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  return {
+    colors: colorChoices,
+    charms,
+  };
+}
+
+function describeColor(hex) {
+  if (!hex) {
+    return "";
+  }
+  const match = Object.entries(chatbotColorKeywords).find(([, value]) => {
+    return colorDistance(hex, value) < 40;
+  });
+  if (match) {
+    return match[0];
+  }
+  const closest = getClosestBeadColors(hex, 1)[0];
+  return closest ? closest.name : hex;
+}
+
+function getClosestBeadColors(targetHex, count = 3) {
+  const available = customizationOptions.beadColors.filter(
+    (color) =>
+      color.inStock !== false && !HARD_BANNED_COLORS.has(color.name)
+  );
+  if (!targetHex) {
+    return available.slice(0, count);
+  }
+  return available
+    .map((color) => ({
+      color,
+      distance: colorDistance(targetHex, color.value),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, count)
+    .map((entry) => entry.color);
+}
+
+function getClosestBeadColorsUnique(targetHex, count = 3, maxDistance = 180) {
+  if (!targetHex) {
+    return customizationOptions.beadColors
+      .filter(
+        (color) =>
+          color.inStock !== false && !HARD_BANNED_COLORS.has(color.name)
+      )
+      .slice(0, count);
+  }
+  const ranked = customizationOptions.beadColors
+    .filter(
+      (color) =>
+        color.inStock !== false && !HARD_BANNED_COLORS.has(color.name)
+    )
+    .map((color) => ({
+      color,
+      distance: colorDistance(targetHex, color.value),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .filter((entry) => entry.distance <= maxDistance);
+  const unique = [];
+  const seen = new Set();
+  ranked.forEach((entry) => {
+    if (unique.length >= count) {
+      return;
+    }
+    if (!seen.has(entry.color.value)) {
+      seen.add(entry.color.value);
+      unique.push(entry.color);
+    }
+  });
+  return unique;
+}
+
+function mapColorHintsToBeads(colorHints, maxCount = 3) {
+  const available = customizationOptions.beadColors.filter(
+    (color) =>
+      color.inStock !== false && !HARD_BANNED_COLORS.has(color.name)
+  );
+  const mapped = [];
+  colorHints.forEach((hint) => {
+    const best = available
+      .map((color) => ({
+        color,
+        distance: colorDistance(hint, color.value),
+      }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (best) {
+      mapped.push(best.color);
+    }
+  });
+  const unique = [];
+  const seen = new Set();
+  mapped.forEach((color) => {
+    if (!seen.has(color.value)) {
+      seen.add(color.value);
+      unique.push(color);
+    }
+  });
+  return unique.slice(0, maxCount);
+}
+
+function getComplementaryColor(hex) {
+  if (!hex) {
+    return null;
+  }
+  const rgb = hexToRgb(hex);
+  const comp = {
+    r: 255 - rgb.r,
+    g: 255 - rgb.g,
+    b: 255 - rgb.b,
+  };
+  const toHex = (value) => Math.round(value).toString(16).padStart(2, "0");
+  return `#${toHex(comp.r)}${toHex(comp.g)}${toHex(comp.b)}`;
+}
+
+function buildColorMessage(profile) {
+  if (profile.colorNames && profile.colorNames.length) {
+    const baseName = profile.colorNames[0];
+    const accentName = profile.colorNames[1] || "";
+    return accentName
+      ? `You mentioned ${baseName}, so I anchored the palette there and balanced it with ${accentName}.`
+      : `You mentioned ${baseName}, so I anchored the palette there.`;
+  }
+  if (!profile.targetColor) {
+    return "I will keep the palette versatile and balanced.";
+  }
+  const baseName = describeColor(profile.targetColor);
+  const complementary = getComplementaryColor(profile.targetColor);
+  const complementaryName = complementary ? describeColor(complementary) : "";
+  const lines = [
+    `Your outfit reads as ${baseName} forward, so I leaned into that shade.`,
+  ];
+  if (complementaryName && complementaryName !== baseName) {
+    lines.push(
+      `A touch of ${complementaryName} adds contrast without overpowering the look.`
+    );
+  }
+  return lines.join(" ");
+}
+
+function getColorTemperature(hex) {
+  if (!hex) {
+    return "neutral";
+  }
+  const { r, g, b } = hexToRgb(hex);
+  if (r > b + 25) {
+    return "warm";
+  }
+  if (b > r + 25) {
+    return "cool";
+  }
+  return "neutral";
+}
+
+function findBeadColorByName(name) {
+  const target = String(name || "").toLowerCase();
+  return customizationOptions.beadColors.find(
+    (color) =>
+      color.inStock !== false &&
+      String(color.name || "").toLowerCase().includes(target)
+  );
+}
+
+function buildThemePalette(theme) {
+  const palettes = {
+    beachy: ["Ocean Blue", "Pearl White", "Coral Bloom"],
+    minimalist: ["Pearl White", "Midnight Black", "Golden Amber"],
+    cute: ["Blush Rose", "Peach Blossom", "Flamingo Pop"],
+    trendy: ["Royal Navy", "Sunset Apricot", "Dusty Mauve"],
+    elegant: ["Pearl White", "Golden Amber", "Midnight Black"],
+    fandom: ["Crimson Rose", "Royal Navy", "Blush Rose"],
+  };
+  const names = palettes[theme] || [];
+  const colors = names
+    .map((name) => findBeadColorByName(name))
+    .filter(Boolean);
+  if (colors.length) {
+    return colors;
+  }
+  return customizationOptions.beadColors
+    .filter(
+      (color) =>
+        color.inStock !== false && !HARD_BANNED_COLORS.has(color.name)
+    )
+    .slice(0, 3);
+}
+
+function pickCharmsByTemperature(temperature, count, seed) {
+  const charmOptions = customizationOptions.charms.filter(
+    (charm) => charm.inStock !== false
+  );
+  const warmPool = ["heart", "smiley", "golden pearl", "flower"];
+  const coolPool = ["star", "pearl", "shell", "starfish", "moon"];
+  const neutralPool = ["pearl", "box", "star", "initial"];
+  const pool =
+    temperature === "warm"
+      ? warmPool
+      : temperature === "cool"
+      ? coolPool
+      : neutralPool;
+  const available = pool
+    .map((id) => charmOptions.find((charm) => charm.id === id))
+    .filter(Boolean);
+  const fallback = charmOptions.slice(0);
+  const seedValue = hashString(seed || "charm");
+  const rand = mulberry32(seedValue);
+  const source = available.length ? available : fallback;
+  const picks = [];
+  const used = new Set();
+  while (picks.length < Math.min(count, source.length)) {
+    const index = Math.floor(rand() * source.length);
+    if (used.has(index)) {
+      continue;
+    }
+    used.add(index);
+    picks.push(source[index]);
+  }
+  return picks;
+}
+
+function buildCustomStylingSuggestions(profile) {
+  const colorAvailable =
+    Boolean(profile.targetColor) || profile.colorHints.length > 0;
+  const hintedPalette = mapColorHintsToBeads(profile.colorHints, 3);
+  const twoColorPalette = profile.colorHints.length >= 2
+    ? mapColorHintsToBeads(profile.colorHints.slice(0, 2), 2)
+    : [];
+  const palette = colorAvailable
+    ? hintedPalette.length
+      ? hintedPalette
+      : getClosestBeadColorsUnique(profile.targetColor, 3)
+    : buildThemePalette(profile.themes[0]);
+  const accentColor = colorAvailable
+    ? getClosestBeadColorsUnique(
+        getComplementaryColor(profile.targetColor),
+        1,
+        160
+      )[0]
+    : null;
+  const basePalette = twoColorPalette.length ? twoColorPalette : palette;
+  const finalPalette = accentColor
+    ? [...basePalette, accentColor].filter(
+        (color, index, array) =>
+          color && array.findIndex((item) => item.value === color.value) === index
+      )
+    : basePalette;
+  const paletteText = finalPalette.length
+    ? finalPalette.map((color) => color.name).join(", ")
+    : "balanced neutral tones";
+  const primaryNote = colorAvailable
+    ? buildColorMessage(profile)
+    : `I didn’t catch a clear color, so I matched your ${
+        profile.themes[0] || "style"
+      } vibe instead.`;
+
+  const temperature = getColorTemperature(profile.targetColor);
+  const braceletCharms = pickCharmsByTemperature(
+    temperature,
+    2,
+    `${profile.targetColor || "style"}-bracelet`
+  );
+  const necklaceCharms = pickCharmsByTemperature(
+    temperature,
+    2,
+    `${profile.targetColor || "style"}-necklace`
+  ).filter((charm) => !braceletCharms.includes(charm));
+
+  return `
+    <div style="margin-top: 6px;">
+      <p>${primaryNote} Here are custom styling ideas first:</p>
+      <div style="font-size: 13px; opacity: 0.85; line-height: 1.6;">
+        <div><strong>Bracelet:</strong> ${paletteText} beads with ${
+          braceletCharms.map((charm) => charm.label).join(", ")
+        } charms, placed between beads for a seamless flow.</div>
+        <div><strong>Necklace:</strong> ${paletteText} tones with ${
+          necklaceCharms.length ? necklaceCharms.map((charm) => charm.label).join(", ") : "minimal metallic accents"
+        } charms for a balanced neckline.</div>
+        <div>${profile.targetColor ? "These colors echo the dominant shades in your outfit." : "These colors keep the look cohesive even without a clear dominant shade."}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderStylingTips(profile) {
+  const tips = [];
+  const temperature = getColorTemperature(profile.targetColor);
+  if (temperature === "warm") {
+    tips.push("Pair warm-toned beads with gold accents for a glowing finish.");
+    tips.push("Add a soft coral or peach charm to keep the look lively.");
+  } else if (temperature === "cool") {
+    tips.push("Balance cool tones with silver or pearl accents for clarity.");
+    tips.push("Try a navy or ocean-blue piece to deepen the palette.");
+  } else {
+    tips.push("Neutral outfits shine with mixed textures like pearls and matte beads.");
+    tips.push("Keep one statement piece and let the rest stay minimal.");
+  }
+
+  if (profile.themes.includes("beachy")) {
+    tips.push("Layer shell or starfish charms to enhance coastal vibes.");
+  } else if (profile.themes.includes("minimalist")) {
+    tips.push("Stick to one charm type and repeat it for a clean rhythm.");
+  } else if (profile.themes.includes("cute")) {
+    tips.push("Mix pastel beads with playful charms for a sweet finish.");
+  }
+
+  if (tips.length < 3) {
+    tips.push("Mix matte and glossy textures to make the jewelry pop.");
+  }
+
+  return `
+    <div style="margin-top: 8px; font-size: 13px; opacity: 0.8;">
+      <p>Extra styling tips:</p>
+      <ul style="margin: 6px 0 0 18px;">
+        ${tips.slice(0, 3).map((tip) => `<li>${tip}</li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function renderChatbotRecommendations(products) {
+  if (!products.length) {
+    return `<p>I'm not finding close matches yet. Share a bit more about the outfit colors or style, or upload a photo.</p>`;
+  }
+  return `
+    <div style="margin-top: 6px;">
+      ${products
+        .map(
+          (product) => `
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+          <img src="${product.images[0]}" alt="${product.name}" style="width:48px; height:48px; object-fit:cover; border-radius:6px;">
+          <div style="flex:1;">
+            <div style="font-size: 14px; font-weight: 500;">${product.name}</div>
+            <div style="font-size: 12px; opacity: 0.7;">${product.category} • ₹${product.price}</div>
+          </div>
+          <button onclick="openGallery('${product.id}')" style="padding:6px 10px; border:1px solid rgba(212, 175, 55, 0.4); background: transparent; font-size: 12px; border-radius: 6px; cursor: pointer;">View</button>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderChatbotCustomizationSuggestions(profile) {
+  const suggestion = suggestCustomization(profile);
+  const colorText = suggestion.colors.length
+    ? suggestion.colors.map((color) => color.name).join(", ")
+    : "a balanced mix of soft neutrals";
+  const charmText = suggestion.charms.length
+    ? suggestion.charms.map((charm) => charm.label).join(", ")
+    : "simple metallic accents";
+  const reason = profile.targetColor
+    ? "These tones echo the dominant colors in your outfit."
+    : "These tones keep the piece versatile and easy to style.";
+
+  return `
+    <div style="margin-top: 6px;">
+      <p>Customization ideas based on your look:</p>
+      <div style="font-size: 13px; opacity: 0.8;">
+        <div>Bead colors: ${colorText}</div>
+        <div>Charms: ${charmText}</div>
+        <div>Placement: Between beads for an integrated, seamless look.</div>
+        <div>${reason}</div>
+      </div>
+    </div>
+  `;
+}
+
+function addChatbotMessage(role, html) {
+  chatbotMessages.push({
+    role,
+    html,
+    timestamp: Date.now(),
+  });
+}
+
+function initChatbotIfNeeded() {
+  if (!chatbotMessages.length) {
+    addChatbotMessage(
+      "bot",
+      `<p>Hi! I can match jewelry to your outfit with styling ideas and product recommendations. Upload an outfit photo or describe what you’re wearing to get started.</p>`
+    );
+  }
+}
+
+function toggleChatbot() {
+  chatbotOpen = !chatbotOpen;
+  if (chatbotOpen) {
+    initChatbotIfNeeded();
+  }
+  updateUI();
+}
+
+function handleChatbotKeydown(event) {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendChatbotMessage();
+  }
+}
+
+function sendChatbotMessage() {
+  const input = document.getElementById("chatbot-input");
+  if (!input) {
+    return;
+  }
+  const text = input.value.trim();
+  if (!text) {
+    return;
+  }
+  input.value = "";
+  processChatbotMessage(text);
+}
+
+function processChatbotMessage(text) {
+  addChatbotMessage("user", `<p>${escapeHtml(text)}</p>`);
+  const lower = normalizeChatbotText(text);
+
+  if (lower.includes("custom")) {
+    chatbotContext.wantsCustomization = true;
+  }
+
+  if (
+    lower.includes("outfit") ||
+    lower.includes("wearing") ||
+    extractColorsFromText(text).length ||
+    extractThemesFromText(text).length
+  ) {
+    chatbotContext.outfitDescription = text;
+  }
+
+  const faqResponse = getChatbotFaqResponse(text);
+  if (faqResponse) {
+    addChatbotMessage("bot", `<p>${faqResponse}</p>`);
+  }
+
+  const profile = buildOutfitProfile(text);
+  if (!profile.targetColor && !profile.colorHints.length && !profile.themes.length) {
+    addChatbotMessage(
+      "bot",
+      `<p>Tell me the outfit colors (e.g., “navy with gold”) or upload a photo so I can match colors accurately.</p>`
+    );
+    updateUI();
+    return;
+  }
+
+  if (profile.hasSignal) {
+    addChatbotMessage("bot", buildCustomStylingSuggestions(profile));
+
+    const recommendations = recommendProducts(profile, {
+      excludeIds: chatbotContext.recentProductIds || [],
+      maxPerCategory: 2,
+      limit: 6,
+    });
+    chatbotContext.recentProductIds = recommendations.map((item) => item.id);
+    addChatbotMessage(
+      "bot",
+      `<p>Matching products from the collection:</p>${renderChatbotRecommendations(
+        recommendations
+      )}`
+    );
+    addChatbotMessage("bot", renderStylingTips(profile));
+  } else if (
+    lower.includes("recommend") ||
+    lower.includes("suggest") ||
+    lower.includes("style")
+  ) {
+    addChatbotMessage(
+      "bot",
+      `<p>Share your outfit colors or upload a photo and I will match the best pieces for you.</p>`
+    );
+  } else if (!faqResponse) {
+    addChatbotMessage(
+      "bot",
+      `<p>Tell me what you're wearing or upload a photo, and I will match pieces for you.</p>`
+    );
+  }
+
+  updateUI();
+}
+
+function analyzeImageAverageColor(imageEl) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const size = 80;
+  canvas.width = size;
+  canvas.height = size;
+  ctx.drawImage(imageEl, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha < 10) {
+      continue;
+    }
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
+    count += 1;
+  }
+  if (!count) {
+    return null;
+  }
+  const toHex = (value) =>
+    Math.round(value).toString(16).padStart(2, "0");
+  return `#${toHex(r / count)}${toHex(g / count)}${toHex(b / count)}`;
+}
+
+function handleChatbotImageUpload(input) {
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) {
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    showNotification("Please upload an image file", "error");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    chatbotContext.outfitImage = dataUrl;
+    const img = new Image();
+    img.onload = () => {
+      chatbotContext.outfitAverageColor = analyzeImageAverageColor(img);
+      const profile = buildOutfitProfile("");
+      addChatbotMessage("bot", buildCustomStylingSuggestions(profile));
+      const recommendations = recommendProducts(profile, {
+        excludeIds: chatbotContext.recentProductIds || [],
+        maxPerCategory: 2,
+        limit: 6,
+      });
+      chatbotContext.recentProductIds = recommendations.map((item) => item.id);
+      addChatbotMessage(
+        "bot",
+        `<p>Matching products from the collection:</p>${renderChatbotRecommendations(
+          recommendations
+        )}`
+      );
+      addChatbotMessage("bot", renderStylingTips(profile));
+      updateUI();
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function scrollChatbotToBottom() {
+  const container = document.getElementById("chatbot-messages");
+  if (container) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
 function rgbToHex(r, g, b) {
   const toHex = (value) =>
     Math.max(0, Math.min(255, Math.round(value)))
@@ -2942,6 +3926,9 @@ function ensureCustomOrderFromRecord(record) {
       meta.charmPlacement || defaultCustomizationState.charmPlacement,
     charmCounts: meta.charmCounts || { ...defaultCustomizationState.charmCounts },
     initialLetter: meta.initialLetter || defaultCustomizationState.initialLetter,
+    smileyColor: meta.smileyColor || defaultCustomizationState.smileyColor,
+    customerNote: meta.customerNote || "",
+    referenceImage: meta.referenceImage || null,
     beadCount: normalizeBeadCount(meta.beadCount),
   };
   const preview = buildCustomizationPreview(previewState);
@@ -3589,6 +4576,58 @@ function renderHeader() {
       `;
 }
 
+function renderChatbot() {
+  const messages = chatbotMessages
+    .map((message) => {
+      const isUser = message.role === "user";
+      return `
+        <div style="display:flex; justify-content:${isUser ? "flex-end" : "flex-start"}; margin-bottom: 10px;">
+          <div style="max-width: 80%; padding: 10px 12px; border-radius: 12px; background: ${
+            isUser ? config.primary_action_color : config.surface_color
+          }; color: ${isUser ? config.background_color : config.text_color}; font-size: ${
+        config.font_size * 0.85
+      }px; box-shadow: 0 6px 14px rgba(0,0,0,0.08);">
+            ${message.html}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <div style="position: fixed; bottom: 24px; right: 24px; z-index: 70; font-family: ${config.font_family}, sans-serif;">
+      <button onclick="toggleChatbot()" style="padding: 12px 16px; border-radius: 9999px; background: ${config.primary_action_color}; color: ${config.background_color}; border: none; box-shadow: 0 10px 24px rgba(0,0,0,0.18); font-size: ${config.font_size * 0.85}px; letter-spacing: 1px; cursor: pointer;">
+        ${chatbotOpen ? "Close Assistant" : "Style Assistant"}
+      </button>
+      ${
+        chatbotOpen
+          ? `
+      <div style="margin-top: 12px; width: 92vw; max-width: 360px; max-height: 70vh; background: ${config.background_color}; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
+        <div style="padding: 12px 14px; border-bottom: 1px solid rgba(212, 175, 55, 0.15); background: ${config.surface_color};">
+          <div style="font-size: ${config.font_size * 0.9}px; font-weight: 500; letter-spacing: 1px;">LunaSol Style Assistant</div>
+          <div style="font-size: ${config.font_size * 0.75}px; opacity: 0.6;">Ask about delivery or get outfit-based recommendations.</div>
+        </div>
+        <div id="chatbot-messages" style="padding: 14px; overflow-y: auto; flex: 1; background: ${config.background_color};">
+          ${messages || `<p style="font-size: ${config.font_size * 0.85}px; opacity: 0.6;">Start the conversation.</p>`}
+        </div>
+        <div style="padding: 12px 14px; border-top: 1px solid rgba(212, 175, 55, 0.15); background: ${config.surface_color};">
+          <textarea id="chatbot-input" onkeydown="handleChatbotKeydown(event)" rows="2" placeholder="Describe your outfit or ask a question..." style="width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.25); background: ${config.background_color}; color: ${config.text_color}; font-size: ${config.font_size * 0.85}px; resize: none;"></textarea>
+          <div style="display:flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+            <button onclick="sendChatbotMessage()" style="flex: 1; padding: 8px 10px; border-radius: 8px; background: ${config.primary_action_color}; color: ${config.background_color}; border: none; font-size: ${config.font_size * 0.8}px; cursor: pointer;">Send</button>
+            <label style="flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px dashed rgba(212, 175, 55, 0.45); font-size: ${config.font_size * 0.8}px; text-align: center; cursor: pointer;">
+              Upload Outfit
+              <input type="file" accept="image/*" onchange="handleChatbotImageUpload(this)" style="display:none;">
+            </label>
+          </div>
+        </div>
+      </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+}
+
 function renderProductCard(product) {
   const isInWishlist = isProductInWishlist(product.id);
 
@@ -3902,7 +4941,7 @@ function renderCustomizationSection() {
                         Upload a reference image
                       </label>
                       <div class="flex items-center gap-3 flex-wrap">
-                        <input type="file" accept="image/*" onchange="handleCustomizationImageUpload(this)" style="font-size: ${config.font_size * 0.85}px; color: ${config.text_color};">
+                        <input type="file" accept="image/*" onchange="handleCustomizationImageUpload(this)" style="width: 100%; max-width: 100%; font-size: ${config.font_size * 0.85}px; color: ${config.text_color};">
                         ${customizationState.referenceImage
       ? `<button onclick="clearCustomizationImage()" class="px-3 py-2 transition-opacity hover:opacity-80" style="border: 1px solid rgba(212, 175, 55, 0.3); color: ${config.text_color}; font-size: ${config.font_size * 0.8}px; border-radius: 6px;">Remove</button>`
       : ""
@@ -5669,6 +6708,8 @@ function updateUI() {
     content += renderGalleryModal();
   }
 
+  content += renderChatbot();
+
   app.innerHTML = content;
   
   // Attach event listeners for dynamic content
@@ -5846,6 +6887,7 @@ const originalUpdateUI = updateUI;
 window.updateUI = function() {
   originalUpdateUI.call(this);
   optimizeImages();
+  scrollChatbotToBottom();
 };
 
 // Initialize viewport setup
